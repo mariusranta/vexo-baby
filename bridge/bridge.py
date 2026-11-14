@@ -91,11 +91,14 @@ if CRY == "model" and not args.say:
         print("The cry model is not available (%s). Using loudness. To get it: pip install numpy ai-edge-litert av" % problem)
         CRY = "loudness"
 
-# The cry model gives a number from 0 to 1 twice a second. Measured on two recordings of real
-# babies: median 0.54 and 0.83. On a person reading aloud: 0.00.
-MODEL_ON = 0.3         # a half second counts as crying from this number up
+# The cry model gives a number from 0 to 1 twice a second. Measured through band 66 in the
+# hackathon room (loud, people talking all around): 3.5 minutes of talk never went over 0.02;
+# a cry video at 40% phone volume next to the band swung between 0.1 and 0.96 (babies breathe),
+# mean about 0.45. So a low bar is safe, and the answer must be smoothed over a few seconds.
+MODEL_ON = 0.15        # a half second counts as crying from this number up
 MODEL_START = 2        # this many of the last 4 half seconds must count: crying started
-MODEL_QUIET = 0.2      # under this for all of the last 10 half seconds (5 s): crying stopped
+MODEL_SURE = 0.5       # or one half second this sure
+MODEL_QUIET = 0.1      # under this for all of the last 10 half seconds (5 s): crying stopped
 
 # How the cry detector decides. Guesses to tune on the real band; see SETUP.md.
 START_WINDOW = 4.0     # seconds looked at to decide "crying started"
@@ -182,7 +185,7 @@ class Cry:
         if time.time() < self.paused_until:
             return None
         self.scores.append(score)
-        if not self.crying and sum(x >= MODEL_ON for x in list(self.scores)[-4:]) >= MODEL_START:
+        if not self.crying and (score >= MODEL_SURE or sum(x >= MODEL_ON for x in list(self.scores)[-4:]) >= MODEL_START):
             self.crying = True
             return "cry_start"
         if self.crying and len(self.scores) >= 10 and max(list(self.scores)[-10:]) < MODEL_QUIET:
@@ -315,15 +318,21 @@ def on_sound(a):
     if ears:
         ears.feed(a.opus, a.seq)
     if model:
-        for score in model.feed_pcm(decoder.feed(a.opus, a.seq)):
-            live["cry"] = score
+        pcm = decoder.feed(a.opus, a.seq)
+        if dump:
+            dump.write(pcm)
+        for score in model.feed_pcm(pcm):
+            recent.append(score)
+            live["cry"] = max(recent)                  # the page shows the last 2 seconds, not one jumpy half second
             if args.meter == "yes":
-                print("  cry %.2f  %s" % (score, "#" * int(score * 30)))
+                print("%s  cry %.2f  loud %s  %s" % (time.strftime("%H:%M:%S"), score, live["loudness"], "#" * int(score * 30)), flush=True)
             change = cry.feed_score(score)
             if change:
                 todo.append(("cry", change))
 
 
+recent = collections.deque(maxlen=4)
+dump = open(os.environ["BABY_DUMP"], "wb") if os.environ.get("BABY_DUMP") else None    # raw sound, for tuning
 ears = None
 if ALWAYS:
     try:
