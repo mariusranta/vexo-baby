@@ -65,7 +65,7 @@ args = kit.args(more=[
     ("--note-seconds", "12", "the longest a spoken note can be (it stops by itself after a pause)"),
     ("--cry-db", "30", "how loud counts as crying: the loudness number (rms dB below the maximum) must be at or "
                        "under this. Smaller = must be louder. 0 = no cry detection"),
-    ("--always", "no", "yes = listen all the time, like the Vexo dashboard's Live transcript: no tapping. Every "
+    ("--always", "yes", "yes (the default) = listen all the time; no = only after a double-tap. yes: listen all the time, like the Vexo dashboard's Live transcript: no tapping. Every "
                        "finished sentence goes to Deepgram and the API keeps only what is about the baby"),
     ("--meter", "no", "yes = print the loudness number a few times a second, to choose --cry-db"),
     kit.SAY,
@@ -260,7 +260,8 @@ if ALWAYS:
 threading.Thread(target=read_keyboard, daemon=True).start()
 
 print("Connected to %s. Writing to %s" % (band.name, API))
-print("Double-tap the band and speak a note. Or type a note here and press Enter.")
+print("Just talk near the band, or type a note here and press Enter." if ALWAYS
+      else "Double-tap the band and speak a note. Or type a note here and press Enter.")
 print('Type "c" and Enter to switch crying on or off by hand. Stop with Ctrl+C.')
 if CRY_DB > 0:
     print("Cry detection is on (loudness at or under %g). The band's light is solid blue: its microphone is on." % CRY_DB)

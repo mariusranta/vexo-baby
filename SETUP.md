@@ -22,7 +22,8 @@ The page remembers both, so after that the plain address works.
 
 Double-tap the band first so it can be found. Close the Vexo dashboard tab: one program at a time.
 
-- Double-tap the band, wait for the "tink" from the laptop, say a note, stop talking.
+- Just talk near the band. It listens all the time and keeps only what is about the baby.
+  (`--always no` goes back to double-tap first, then speak.)
 - Type a note in the terminal and press Enter: same thing without the microphone.
 - Type `c` and Enter: switch crying on or off by hand (demo safety net).
 - `--meter yes` prints the loudness number, to choose `--cry-db` (default 30; smaller = must be louder).
