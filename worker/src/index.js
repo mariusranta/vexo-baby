@@ -47,12 +47,13 @@ async function route(request, url, env, ctx) {
   if (method === 'POST' && path === '/notes') {
     const text = String(body.text || '').trim().slice(0, 1000);
     if (!text) return json({ error: 'text is empty' }, 400);
-    const parsed = await parseNote(env, text, now, tz);
+    const { events: parsed, answer } = await parseNote(env, text, now, tz);
     const saved = [];
     for (const e of parsed) {
       saved.push(await insert(env, { ...e, source: body.source || 'phone', who: body.who, raw: text }));
     }
-    return json({ events: saved });
+    if (answer) await say(env, answer, now);
+    return json({ events: saved, answer: answer || null });
   }
   if (method === 'POST' && path === '/band') {
     // The bridge calls this every few seconds: it is alive, how loud it is, and the words it is hearing right now.
@@ -77,13 +78,27 @@ async function route(request, url, env, ctx) {
     const f = facts(await eventsSince(env, now - 48 * 60 * MIN), now);
     const out = await llmJson(env,
       'You answer a caretaker\'s question about a baby from the log below. One or two short plain sentences. ' +
-      'Use only the log. If the log does not say, say so. Never give medical advice beyond "call the parent or a doctor".',
-      `Time now: ${clock(now, tz)}\n\nLog (oldest first):\n${logLines(f.events, now, tz)}\n\nSummary: ${JSON.stringify(f.summary)}\n\nQuestion: ${question}`,
+      'It will be read aloud: say "ounces", not "oz". Use only the facts and the log. If they do not say, say so. Never give medical advice beyond "call the parent or a doctor".',
+      `Time now: ${clock(now, tz)}\n\nFacts right now (already worked out; copy these durations word for word):\n${factsText(f)}\n\nLog (oldest first):\n${logLines(f.events, now, tz)}\n\nQuestion: ${question}`,
       { type: 'object', properties: { answer: { type: 'string' } }, required: ['answer'], additionalProperties: false });
+    await say(env, out.answer, now);
     return json({ answer: out.answer });
   }
+  if (method === 'GET' && path === '/speech') {
+    // The newest answer as sound (Deepgram text to speech). The phone page plays it.
+    const speak = JSON.parse((await env.DB.prepare("SELECT value FROM meta WHERE key = 'speak'").first())?.value || 'null');
+    if (!speak) return json({ error: 'nothing to say' }, 404);
+    if (!env.DEEPGRAM_API_KEY) return json({ error: 'DEEPGRAM_API_KEY is not set on the Worker' }, 500);
+    const sound = await fetch('https://api.deepgram.com/v1/speak?model=' + (env.VOICE || 'aura-2-thalia-en'), {
+      method: 'POST',
+      headers: { authorization: 'Token ' + env.DEEPGRAM_API_KEY, 'content-type': 'application/json' },
+      body: JSON.stringify({ text: speak.text }),
+    });
+    if (!sound.ok) return json({ error: 'deepgram status ' + sound.status }, 502);
+    return new Response(sound.body, { headers: { 'content-type': 'audio/mpeg', 'cache-control': 'no-store', ...CORS } });
+  }
   if (method === 'POST' && path === '/reset') {
-    await env.DB.batch([env.DB.prepare('DELETE FROM events'), env.DB.prepare("DELETE FROM meta WHERE key != 'band'")]);
+    await env.DB.batch([env.DB.prepare('DELETE FROM events'), env.DB.prepare("DELETE FROM meta WHERE key NOT IN ('band')")]);
     if (body.seed) for (const e of demoDay(now)) await insert(env, e);
     return json({ ok: true, seeded: !!body.seed });
   }
@@ -91,6 +106,12 @@ async function route(request, url, env, ctx) {
 }
 
 // ---------------------------------------------------------------- storage
+
+/** Something for the phone to say out loud. The page sees a new id in /status and plays /speech. */
+async function say(env, text, now) {
+  await env.DB.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)')
+    .bind('speak', JSON.stringify({ id: now, text: String(text).slice(0, 400) })).run();
+}
 
 async function eventsSince(env, since) {
   const { results } = await env.DB.prepare('SELECT * FROM events WHERE at >= ? ORDER BY at ASC, id ASC').bind(since).all();
@@ -128,8 +149,9 @@ const NOTE_SCHEMA = {
         additionalProperties: false,
       },
     },
+    answer: { type: ['string', 'null'] },
   },
-  required: ['events'],
+  required: ['events', 'answer'],
   additionalProperties: false,
 };
 
@@ -142,16 +164,29 @@ Types:
 - medicine: detail names it, amount and unit if said.
 - note: anything else worth keeping (mood, fever, rash, a message for the next caretaker).
 minutes_ago: how long ago it happened. 0 if it is happening now or no time was said. If a clock time was said, work it out from the time now.
-detail: a few plain words, no full sentence. One note can hold several events. If nothing in it is about the baby or its care (small talk, "hello", testing the device), return no events.`;
+detail: a few plain words, no full sentence. One note can hold several events. If nothing in it is about the baby or its care (small talk, "hello", testing the device), return no events.
+
+answer: you are also the voice of the baby's wristband. Fill it in only when the words hold a question that the log can help with:
+- a question to you about the baby ("when did she last eat?", "how long has she been up?", "why is she crying?"), or
+- a caretaker asking the baby what it needs ("are you hungry?", "are you tired, sweetie?", "what's wrong?"). Answer for the baby from the log: "Probably, yes. She last ate 2 hours 50 minutes ago and usually eats every 3 hours."
+One or two short sentences that sound natural read aloud: no lists, no symbols, "ounces" not "oz". Take every duration from "Facts right now" exactly as written there; never work one out yourself from clock times. Use only the facts and the log. Never medical advice beyond "call her parent or a doctor".
+Otherwise answer is null: for plain notes, small talk, questions about anything else, and whenever you are unsure the question is about the baby.
+If the words only repeat what the wristband itself just said (given below), return no events and a null answer.`;
 
 async function parseNote(env, text, now, tz) {
   try {
-    const out = await llmJson(env, NOTE_RULES, `Time now: ${clock(now, tz)}\nThe caretaker said: "${text}"`, NOTE_SCHEMA);
+    const f = facts(await eventsSince(env, now - 48 * 60 * MIN), now);
+    const spoke = JSON.parse((await env.DB.prepare("SELECT value FROM meta WHERE key = 'speak'").first())?.value || 'null');
+    const out = await llmJson(env, NOTE_RULES,
+      `Time now: ${clock(now, tz)}\nFacts right now (already worked out; copy these durations word for word in an answer):\n${factsText(f)}\n\n` +
+      `Log, last entries (oldest first):\n${logLines(f.events.slice(-25), now, tz)}\n` +
+      (spoke && now - spoke.id < 90000 ? `The wristband itself just said: "${spoke.text}"\n` : '') +
+      `\nThe caretaker said: "${text}"`, NOTE_SCHEMA);
     const events = (out.events || []).filter((e) => TYPES.includes(e.type)).map((e) => ({
       type: e.type, at: now - Math.max(0, Math.min(Number(e.minutes_ago) || 0, 2880)) * MIN,
       amount: typeof e.amount === 'number' ? e.amount : null, unit: e.unit || null, detail: e.detail || null,
     }));
-    return events;
+    return { events, answer: typeof out.answer === 'string' && out.answer.trim() ? out.answer.trim() : null };
   } catch (problem) {
     console.error('note parser fell back to keywords:', problem.message);
   }
@@ -163,7 +198,7 @@ async function parseNote(env, text, now, tz) {
     : /\b(woke|awake)/.test(t) ? 'sleep_end'
     : /\b(asleep|nap|sleeping|down for)/.test(t) ? 'sleep_start'
     : /\b(rock|pacifier|swaddl|held|burp)/.test(t) ? 'soothe' : 'note';
-  return [{ type, at: now, amount: amount ? Number(amount[1]) : null, unit: amount ? amount[2].replace(/ounces?/, 'oz') : null, detail: text }];
+  return { events: [{ type, at: now, amount: amount ? Number(amount[1]) : null, unit: amount ? amount[2].replace(/ounces?/, 'oz') : null, detail: text }], answer: null };
 }
 
 // ---------------------------------------------------------------- facts from the log
@@ -289,7 +324,9 @@ async function status(env, ctx, now, tz) {
     loudness: b.loudness ?? null, cry_score: b.cry_score ?? null, heard: b.heard || null, heard_final: !!b.heard_final,
     heard_seconds_ago: b.heard_at ? Math.round((now - b.heard_at) / 1000) : null,
   };
-  return { now, ...f.summary, reason, episodes: f.episodes.slice(-5), band };
+  const spoke = JSON.parse((await env.DB.prepare("SELECT value FROM meta WHERE key = 'speak'").first())?.value || 'null');
+  const speak = spoke && now - spoke.id < 5 * MIN ? { id: spoke.id, text: spoke.text, seconds_ago: Math.round((now - spoke.id) / 1000) } : null;
+  return { now, ...f.summary, reason, episodes: f.episodes.slice(-5), band, speak };
 }
 
 // ---------------------------------------------------------------- the model
@@ -319,6 +356,31 @@ async function llmJson(env, instructions, input, schema) {
 }
 
 // ---------------------------------------------------------------- words
+
+/** The facts as sentences ready to be read aloud, so the model copies durations instead of working them out. */
+function factsText(f) {
+  const s = f.summary, r = ruleGuess(f);
+  const lines = [
+    s.last_feed_minutes_ago === null ? 'No feed is in the log.'
+      : `Last feed: ${spoken(s.last_feed_minutes_ago)} ago${s.last_feed_amount ? `, ${s.last_feed_amount} ${unitWord(s.last_feed_unit)}` : ''}.`,
+    s.usual_feed_gap_minutes ? `She usually eats about every ${spoken(Math.round(s.usual_feed_gap_minutes / 15) * 15)}.` : '',
+    s.asleep ? `She is asleep, for ${spoken(s.asleep_minutes)} now.` : s.awake_minutes !== null ? `She has been awake for ${spoken(s.awake_minutes)}.` : '',
+    s.last_diaper_minutes_ago === null ? 'No diaper change is in the log.' : `Last diaper change: ${spoken(s.last_diaper_minutes_ago)} ago (${s.last_diaper || 'no detail'}).`,
+    `Sleep in the last 24 hours: ${spoken(s.sleep_minutes_24h)}. Feeds in the last 24 hours: ${s.feeds_24h}. Times she cried: ${s.cries_24h}.`,
+    s.crying ? `She is crying now, for ${spoken(Math.max(1, s.crying_minutes))}.` : 'She is not crying now.',
+    `Most likely need right now: ${r.cause} (${r.confidence} confidence). Try first: ${r.try_first}.`,
+    f.episodes.filter((e) => e.calmed_by).length ? 'What ended her last cries: ' + f.episodes.filter((e) => e.calmed_by).slice(-3).map((e) => e.calmed_by).join('; ') + '.' : '',
+  ];
+  return lines.filter(Boolean).join('\n');
+}
+
+function spoken(minutes) {
+  const m = Math.max(0, Math.round(minutes)), h = Math.floor(m / 60), r = m % 60;
+  const hours = h ? `${h} hour${h > 1 ? 's' : ''}` : '', mins = r || !h ? `${r} minute${r === 1 ? '' : 's'}` : '';
+  return [hours, mins].filter(Boolean).join(' ');
+}
+
+const unitWord = (u) => ({ oz: 'ounces', ml: 'milliliters', min: 'minutes' }[String(u || '').toLowerCase()] || u || '');
 
 function clock(ms, tz) {
   return new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(new Date(ms));

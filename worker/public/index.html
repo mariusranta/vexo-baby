@@ -32,6 +32,7 @@
   #bandState.on { color:var(--calm); font-weight:600; } #bandState.off { color:var(--cry); font-weight:600; }
   #heard { margin-top:6px; font-size:15px; min-height:1.4em; } #heard.live { color:var(--soft); font-style:italic; }
   #band { padding:12px 16px; }
+  #said { margin-top:8px; font-size:16px; font-weight:600; color:var(--accent); } #said:empty { display:none; }
 </style>
 </head>
 <body>
@@ -49,6 +50,8 @@
   <div class="card" id="band">
     <div id="bandState" class="dot">Band: checking…</div>
     <div id="heard"></div>
+    <div id="said"></div>
+    <button id="voice" class="ghost" style="margin-top:10px;width:100%">🔊 Turn on voice answers</button>
   </div>
 
   <div class="stats">
@@ -83,6 +86,15 @@ const span = (m) => m == null ? '–' : m < 60 ? Math.round(m) + ' min' : Math.f
 const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 const LABEL = { feed: 'Fed', diaper: 'Diaper', sleep_start: 'Fell asleep', sleep_end: 'Woke up', cry_start: 'Crying started', cry_end: 'Crying stopped', soothe: 'Soothed', medicine: 'Medicine', note: 'Note' };
 
+// Voice: phones only let a page make sound after a tap, so one tap on the button unlocks this player for good.
+const player = new Audio();
+let voiceOn = false, lastSpoken = null;
+$('voice').onclick = () => {
+  voiceOn = !voiceOn;
+  $('voice').textContent = voiceOn ? '🔊 Voice answers are on' : '🔊 Turn on voice answers';
+  if (voiceOn) { player.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA='; player.play().catch(() => {}); }
+};
+
 async function refresh() {
   try {
     const [s, t] = await Promise.all([api('/status?tz=' + encodeURIComponent(TZ)), api('/timeline?hours=24')]);
@@ -101,6 +113,14 @@ async function refresh() {
       : '○ Band offline' + (band.seen_seconds_ago != null ? ' (last seen ' + span(band.seen_seconds_ago / 60) + ' ago)' : '');
     $('heard').className = band.heard_final ? '' : 'live';
     $('heard').textContent = band.heard && band.heard_seconds_ago < 600 ? '“' + band.heard + '”' + (band.heard_seconds_ago > 5 ? '  · ' + span(band.heard_seconds_ago / 60) + ' ago' : '') : (band.online ? 'Nothing heard yet. Say something near the band.' : '');
+    if (s.speak) {
+      $('said').textContent = '🔊 ' + s.speak.text;
+      if (s.speak.id !== lastSpoken) {
+        const fresh = lastSpoken !== null && s.speak.seconds_ago < 30;     // not the one that was there when the page opened
+        lastSpoken = s.speak.id;
+        if (fresh && voiceOn) { player.src = '/api/speech?id=' + s.speak.id + '&k=' + encodeURIComponent(KEY); player.play().catch(() => {}); }
+      }
+    } else { $('said').textContent = ''; if (lastSpoken === null) lastSpoken = 0; }
     $('fed').textContent = span(s.last_feed_minutes_ago);
     $('slept').textContent = span(s.sleep_minutes_24h);
     $('diaper').textContent = span(s.last_diaper_minutes_ago);

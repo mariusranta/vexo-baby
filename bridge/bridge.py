@@ -136,7 +136,13 @@ def send_note(text, source):
         return
     print('  Note: "%s"' % text)
     answer = post("/notes", {"text": text, "source": source, "who": args.who or None})
-    if answer is not None and not answer.get("events"):
+    if (answer or {}).get("answer"):
+        words = answer["answer"]
+        print("  Says: %s" % words)
+        # The phone now reads this aloud next to the band: do not take our own voice for a caretaker's.
+        said["mute_until"] = time.time() + 4 + len(words.split()) / 2.2
+        said["words"] = []
+    elif answer is not None and not answer.get("events"):
         print("  Nothing about the baby in that, so nothing was logged.")
     for e in (answer or {}).get("events", []):
         amount = " %g %s" % (e["amount"], e.get("unit") or "") if e.get("amount") is not None else ""
@@ -296,6 +302,8 @@ said = {"words": [], "last": 0.0}           # with --always: finished sentences 
 
 
 def on_sentence(text, final):
+    if time.time() < said.get("mute_until", 0):         # the phone is speaking an answer
+        return
     said["last"] = time.time()
     if text.strip():
         live["heard"], live["final"], live["new"] = text.strip(), bool(final), True
