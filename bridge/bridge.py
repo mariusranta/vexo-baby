@@ -141,7 +141,7 @@ def send_note(text, source):
         print("  Says: %s" % words)
         # The phone now reads this aloud next to the band: do not take our own voice for a caretaker's.
         said["mute_until"] = time.time() + 4 + len(words.split()) / 2.2
-        said["words"] = []
+        said["ready"] = []
     elif answer is not None and not answer.get("events"):
         print("  Nothing about the baby in that, so nothing was logged.")
     for e in (answer or {}).get("events", []):
@@ -298,19 +298,46 @@ def report(band_name):
 
 
 ALWAYS = args.always == "yes" and not args.say
-said = {"words": [], "last": 0.0}           # with --always: finished sentences waiting for a pause
+# With --always: the words Deepgram has for the sentence going on now, and how many of them
+# were sent on already. In a loud room the sentence never "ends" (somebody is always
+# talking), so we do not wait for the end: see the main loop.
+said = {"text": "", "sent": 0, "changed": 0.0, "oldest": 0.0, "ready": [], "mute_until": 0.0}
 
 
 def on_sentence(text, final):
-    if time.time() < said.get("mute_until", 0):         # the phone is speaking an answer
+    words = text.split()
+    now = time.time()
+    if now < said["mute_until"]:                        # the phone is speaking an answer: not a caretaker
+        said["sent"] = 0 if final else len(words)
+        said["text"] = "" if final else text
         return
-    said["last"] = time.time()
     if text.strip():
         live["heard"], live["final"], live["new"] = text.strip(), bool(final), True
-    if final and text.strip():
-        if not said["words"]:
-            said["first"] = time.time()
-        said["words"].append(text.strip())
+    if len(words) < said["sent"]:                       # Deepgram changed its mind about earlier words
+        said["sent"] = len(words)
+    if text != said["text"]:
+        if len(words) > said["sent"] and len(said["text"].split()) <= said["sent"]:
+            said["oldest"] = now                        # the first word that was not sent yet
+        said["text"], said["changed"] = text, now
+    if final:
+        rest = " ".join(words[said["sent"]:])
+        if rest:
+            said["ready"].append(rest)
+        said["text"], said["sent"] = "", 0
+
+
+def words_to_send():
+    """A piece of talk to send on, or None. A finished sentence at once; an unfinished one
+    when nothing new came for a second, or when its first unsent word is 5 seconds old."""
+    if said["ready"]:
+        return said["ready"].pop(0)
+    words = said["text"].split()
+    now = time.time()
+    if len(words) > said["sent"] and (now - said["changed"] > 1.0 or now - said["oldest"] > 5):
+        piece = " ".join(words[said["sent"]:])
+        said["sent"] = len(words)
+        return piece
+    return None
 
 
 band = Band.connect(args.number, args.transport)
@@ -369,12 +396,11 @@ try:
     while ends is None or time.time() < ends:
         if not band.wait(0.1):
             time.sleep(0.5)                                                # the link dropped; the library is getting it back
-        # A pause ends a note. In a room where people never stop talking, 8 seconds does.
-        if ALWAYS and said["words"] and (time.time() - said["last"] > 1.5 or time.time() - said.get("first", 0) > 8):
-            words, said["words"] = " ".join(said["words"]), []
-            print("%s  Heard: %s" % (time.strftime("%H:%M:%S"), words))
-            if len(words.split()) >= 2:
-                send_note(words, "band-voice")
+        piece = words_to_send() if ALWAYS else None
+        if piece:
+            print("%s  Heard: %s" % (time.strftime("%H:%M:%S"), piece))
+            if len(piece.split()) >= 2:
+                send_note(piece, "band-voice")
         while todo:
             job = todo.popleft()
             if job[0] == "cry":
