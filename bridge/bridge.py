@@ -11,6 +11,8 @@
 #   2. Listens to how loud it is. Loud for most of a few seconds = crying started.
 #      Quiet for a while = crying stopped. Only the loudness number is used for this:
 #      no sound leaves the laptop unless you double-tap. Turn it off with --cry-db 0.
+#      With --always yes there is no tapping: it listens all the time, like the Vexo
+#      dashboard's Live transcript, and the API throws away what is not about the baby.
 #   3. The keyboard is a safety net for the demo: type a note and press Enter, or type
 #      "c" + Enter to switch crying on or off by hand.
 #
@@ -63,6 +65,8 @@ args = kit.args(more=[
     ("--note-seconds", "12", "the longest a spoken note can be (it stops by itself after a pause)"),
     ("--cry-db", "30", "how loud counts as crying: the loudness number (rms dB below the maximum) must be at or "
                        "under this. Smaller = must be louder. 0 = no cry detection"),
+    ("--always", "no", "yes = listen all the time, like the Vexo dashboard's Live transcript: no tapping. Every "
+                       "finished sentence goes to Deepgram and the API keeps only what is about the baby"),
     ("--meter", "no", "yes = print the loudness number a few times a second, to choose --cry-db"),
     kit.SAY,
 ])
@@ -230,13 +234,29 @@ def listen_for_note(band):
     return ears.stop()
 
 
+ALWAYS = args.always == "yes" and not args.say
+said = {"words": [], "last": 0.0}           # with --always: finished sentences waiting for a pause
+
+
+def on_sentence(text, final):
+    said["last"] = time.time()
+    if final and text.strip():
+        said["words"].append(text.strip())
+
+
 band = Band.connect(args.number, args.transport)
-band.on("double-tap", lambda e: todo.append(("note",)))
+if not ALWAYS:
+    band.on("double-tap", lambda e: todo.append(("note",)))
 band.on("mic-level", on_level)
 if CRY_DB > 0:
     band.configure(events=True, mic_level=0.1)
 else:
     band.configure(events=True)
+if ALWAYS:
+    ears = speech.create().start(on_sentence)
+    band.on("audio", lambda a: ears.feed(a.opus, a.seq))
+    band.configure(audio=True)
+    print("Listening all the time: just talk. Only what is about the baby is logged.")
 threading.Thread(target=read_keyboard, daemon=True).start()
 
 print("Connected to %s. Writing to %s" % (band.name, API))
@@ -251,6 +271,11 @@ try:
     while ends is None or time.time() < ends:
         if not band.wait(0.1):
             time.sleep(0.5)                                                # the link dropped; the library is getting it back
+        if ALWAYS and said["words"] and time.time() - said["last"] > 1.5:      # a pause: one note
+            words, said["words"] = " ".join(said["words"]), []
+            print("%s  Heard: %s" % (time.strftime("%H:%M:%S"), words))
+            if len(words.split()) >= 2:
+                send_note(words, "band-voice")
         while todo:
             job = todo.popleft()
             if job[0] == "cry":
