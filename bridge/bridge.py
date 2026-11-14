@@ -169,6 +169,7 @@ todo = collections.deque()          # jobs for the main loop: ("note",), ("typed
 
 
 def on_level(m):
+    live["loudness"] = m.rms_db
     if args.meter == "yes":
         print("  loudness %2d  %s" % (m.rms_db, "#" * max(0, (60 - m.rms_db) // 2)))
     if CRY_DB > 0:
@@ -234,13 +235,35 @@ def listen_for_note(band):
     return ears.stop()
 
 
+live = {"heard": None, "final": False, "new": False, "loudness": None}    # what the phone page shows as "the band hears"
+
+
+def report(band_name):
+    """Tells the API every second or so that the bridge is alive and what it is hearing,
+    so the phone page can show that live transcription works. Runs on its own thread."""
+    last = 0.0
+    while True:
+        time.sleep(0.5)
+        if live["new"] or time.time() - last > 4:
+            body = {"name": band_name, "loudness": live["loudness"]}
+            if live["new"]:
+                body.update(heard=live["heard"], final=live["final"])
+                live["new"] = False
+            last = time.time()
+            post("/band", body)
+
+
 ALWAYS = args.always == "yes" and not args.say
 said = {"words": [], "last": 0.0}           # with --always: finished sentences waiting for a pause
 
 
 def on_sentence(text, final):
     said["last"] = time.time()
+    if text.strip():
+        live["heard"], live["final"], live["new"] = text.strip(), bool(final), True
     if final and text.strip():
+        if not said["words"]:
+            said["first"] = time.time()
         said["words"].append(text.strip())
 
 
@@ -258,6 +281,7 @@ if ALWAYS:
     band.configure(audio=True)
     print("Listening all the time: just talk. Only what is about the baby is logged.")
 threading.Thread(target=read_keyboard, daemon=True).start()
+threading.Thread(target=report, args=(band.name,), daemon=True).start()
 
 print("Connected to %s. Writing to %s" % (band.name, API))
 print("Just talk near the band, or type a note here and press Enter." if ALWAYS
@@ -272,7 +296,8 @@ try:
     while ends is None or time.time() < ends:
         if not band.wait(0.1):
             time.sleep(0.5)                                                # the link dropped; the library is getting it back
-        if ALWAYS and said["words"] and time.time() - said["last"] > 1.5:      # a pause: one note
+        # A pause ends a note. In a room where people never stop talking, 8 seconds does.
+        if ALWAYS and said["words"] and (time.time() - said["last"] > 1.5 or time.time() - said.get("first", 0) > 8):
             words, said["words"] = " ".join(said["words"]), []
             print("%s  Heard: %s" % (time.strftime("%H:%M:%S"), words))
             if len(words.split()) >= 2:

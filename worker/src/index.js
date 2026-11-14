@@ -54,6 +54,14 @@ async function route(request, url, env, ctx) {
     }
     return json({ events: saved });
   }
+  if (method === 'POST' && path === '/band') {
+    // The bridge calls this every few seconds: it is alive, how loud it is, and the words it is hearing right now.
+    const old = JSON.parse((await env.DB.prepare("SELECT value FROM meta WHERE key = 'band'").first())?.value || '{}');
+    const band = { ...old, seen: now, name: body.name || old.name || null, loudness: body.loudness ?? old.loudness ?? null };
+    if (typeof body.heard === 'string') Object.assign(band, { heard: body.heard.slice(0, 300), heard_at: now, heard_final: !!body.final });
+    await env.DB.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').bind('band', JSON.stringify(band)).run();
+    return json({ ok: true });
+  }
   if (method === 'POST' && path === '/events') {
     if (!TYPES.includes(body.type)) return json({ error: 'type must be one of ' + TYPES.join(' ') }, 400);
     return json({ event: await insert(env, { ...body, at: Number(body.at) || now, source: body.source || 'api' }) });
@@ -74,7 +82,7 @@ async function route(request, url, env, ctx) {
     return json({ answer: out.answer });
   }
   if (method === 'POST' && path === '/reset') {
-    await env.DB.batch([env.DB.prepare('DELETE FROM events'), env.DB.prepare('DELETE FROM meta')]);
+    await env.DB.batch([env.DB.prepare('DELETE FROM events'), env.DB.prepare("DELETE FROM meta WHERE key != 'band'")]);
     if (body.seed) for (const e of demoDay(now)) await insert(env, e);
     return json({ ok: true, seeded: !!body.seed });
   }
@@ -274,7 +282,13 @@ async function status(env, ctx, now, tz) {
     await env.DB.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').bind('reason', JSON.stringify({ key, reason: null })).run();
     ctx.waitUntil(modelGuess(env, f, now, tz, key).catch((p) => console.error('model guess failed:', p.message)));
   }
-  return { now, ...f.summary, reason, episodes: f.episodes.slice(-5) };
+  const b = JSON.parse((await env.DB.prepare("SELECT value FROM meta WHERE key = 'band'").first())?.value || '{}');
+  const band = {
+    online: !!b.seen && now - b.seen < 12000, name: b.name || null, seen_seconds_ago: b.seen ? Math.round((now - b.seen) / 1000) : null,
+    loudness: b.loudness ?? null, heard: b.heard || null, heard_final: !!b.heard_final,
+    heard_seconds_ago: b.heard_at ? Math.round((now - b.heard_at) / 1000) : null,
+  };
+  return { now, ...f.summary, reason, episodes: f.episodes.slice(-5), band };
 }
 
 // ---------------------------------------------------------------- the model
