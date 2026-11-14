@@ -1,0 +1,11 @@
+{
+  "name": "vexo-baby",
+  "main": "src/index.js",
+  "compatibility_date": "2026-11-01",
+  "assets": { "directory": "./public", "binding": "ASSETS" },
+  "ai": { "binding": "AI" },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "vexo-baby", "database_id": "b37a64cf-3548-4f6a-b9ec-a60a285cc673" }
+  ],
+  "observability": { "enabled": true }
+}
