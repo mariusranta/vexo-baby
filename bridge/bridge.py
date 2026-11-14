@@ -109,6 +109,8 @@ def send_note(text, source):
         return
     print('  Note: "%s"' % text)
     answer = post("/notes", {"text": text, "source": source, "who": args.who or None})
+    if answer is not None and not answer.get("events"):
+        print("  Nothing about the baby in that, so nothing was logged.")
     for e in (answer or {}).get("events", []):
         amount = " %g %s" % (e["amount"], e.get("unit") or "") if e.get("amount") is not None else ""
         print("  Logged: %s%s%s" % (e["type"], amount, " (%s)" % e["detail"] if e.get("detail") else ""))
@@ -178,6 +180,20 @@ def read_keyboard():
             todo.append(("typed", line))
 
 
+def flash(band, colour, back=False):
+    """A short flash of the band's light, so the person knows the tap was felt. The light is
+    locked while the microphone is on, so the loudness meter is switched off for the flash."""
+    try:
+        band.configure(mic_level=False)
+        band.set_led(colour)
+        band.wait(0.5)
+        band.led_off()
+        if back and CRY_DB > 0:
+            band.configure(mic_level=0.1)
+    except VexoError as problem:
+        print("  (no flash: %s)" % problem)
+
+
 def listen_for_note(band):
     """Mic on, words to Deepgram, stop after a pause in the talking or at NOTE_SECONDS."""
     if args.say:                                       # typed words in place of the microphone
@@ -195,10 +211,11 @@ def listen_for_note(band):
         ears.feed(a.opus, a.seq)
 
     band.on("audio", feed)
-    started = time.time()
     try:
+        flash(band, "#00ff00")                         # green: go ahead, speak
         band.configure(audio=True)
-        sound("Tink")
+        sound("Glass")
+        started = time.time()
         while time.time() - started < NOTE_SECONDS:
             band.wait(0.2)
             if heard["last"] and time.time() - heard["last"] > 1.8:      # they stopped talking
@@ -209,6 +226,7 @@ def listen_for_note(band):
     finally:
         band.off("audio", feed)
     sound("Pop")
+    flash(band, "#ffffff", back=True)                  # white: got it
     return ears.stop()
 
 
@@ -249,6 +267,8 @@ try:
                     send_note(listen_for_note(band), "band-voice")
                 except VexoError as problem:
                     print("  No note this time. %s" % problem)
+                if CRY_DB > 0:
+                    band.configure(mic_level=0.1)
                 cry.pause(3)
                 last_note = time.time()
                 todo.clear()                                               # taps and loudness from while we listened

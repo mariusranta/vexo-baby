@@ -133,7 +133,7 @@ Types:
 - medicine: detail names it, amount and unit if said.
 - note: anything else worth keeping (mood, fever, rash, a message for the next caretaker).
 minutes_ago: how long ago it happened. 0 if it is happening now or no time was said. If a clock time was said, work it out from the time now.
-detail: a few plain words, no full sentence. One note can hold several events. If nothing in it is about the baby, return one "note" with the words.`;
+detail: a few plain words, no full sentence. One note can hold several events. If nothing in it is about the baby or its care (small talk, "hello", testing the device), return no events.`;
 
 async function parseNote(env, text, now, tz) {
   try {
@@ -142,7 +142,7 @@ async function parseNote(env, text, now, tz) {
       type: e.type, at: now - Math.max(0, Math.min(Number(e.minutes_ago) || 0, 2880)) * MIN,
       amount: typeof e.amount === 'number' ? e.amount : null, unit: e.unit || null, detail: e.detail || null,
     }));
-    if (events.length) return events;
+    return events;
   } catch (problem) {
     console.error('note parser fell back to keywords:', problem.message);
   }
