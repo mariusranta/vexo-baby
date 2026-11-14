@@ -57,7 +57,8 @@ async function route(request, url, env, ctx) {
   if (method === 'POST' && path === '/band') {
     // The bridge calls this every few seconds: it is alive, how loud it is, and the words it is hearing right now.
     const old = JSON.parse((await env.DB.prepare("SELECT value FROM meta WHERE key = 'band'").first())?.value || '{}');
-    const band = { ...old, seen: now, name: body.name || old.name || null, loudness: body.loudness ?? old.loudness ?? null };
+    const band = { ...old, seen: now, name: body.name || old.name || null, loudness: body.loudness ?? old.loudness ?? null,
+      cry_score: body.cry_score ?? null };
     if (typeof body.heard === 'string') Object.assign(band, { heard: body.heard.slice(0, 300), heard_at: now, heard_final: !!body.final });
     await env.DB.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').bind('band', JSON.stringify(band)).run();
     return json({ ok: true });
@@ -285,7 +286,7 @@ async function status(env, ctx, now, tz) {
   const b = JSON.parse((await env.DB.prepare("SELECT value FROM meta WHERE key = 'band'").first())?.value || '{}');
   const band = {
     online: !!b.seen && now - b.seen < 12000, name: b.name || null, seen_seconds_ago: b.seen ? Math.round((now - b.seen) / 1000) : null,
-    loudness: b.loudness ?? null, heard: b.heard || null, heard_final: !!b.heard_final,
+    loudness: b.loudness ?? null, cry_score: b.cry_score ?? null, heard: b.heard || null, heard_final: !!b.heard_final,
     heard_seconds_ago: b.heard_at ? Math.round((now - b.heard_at) / 1000) : null,
   };
   return { now, ...f.summary, reason, episodes: f.episodes.slice(-5), band };

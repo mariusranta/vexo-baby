@@ -1,8 +1,8 @@
-.env
-.dev.vars
-node_modules/
-.wrangler/
-vexo-open-kit/
-__pycache__/
 *.ogg
+.dev.vars
+.env
 .venv/
+.wrangler/
+__pycache__/
+node_modules/
+vexo-open-kit/

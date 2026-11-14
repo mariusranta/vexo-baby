@@ -67,6 +67,8 @@ args = kit.args(more=[
                        "under this. Smaller = must be louder. 0 = no cry detection"),
     ("--always", "yes", "yes (the default) = listen all the time; no = only after a double-tap. yes: listen all the time, like the Vexo dashboard's Live transcript: no tapping. Every "
                        "finished sentence goes to Deepgram and the API keeps only what is about the baby"),
+    ("--cry", "model", "how crying is detected: model = a sound classifier (YAMNet) that knows what a baby's cry "
+                       "sounds like, loudness = anything loud for a few seconds, off = only by hand"),
     ("--meter", "no", "yes = print the loudness number a few times a second, to choose --cry-db"),
     kit.SAY,
 ])
@@ -76,6 +78,24 @@ if not API:
     sys.exit("BABY_API is not set. Copy env.example to .env in the repo folder and fill it in.")
 NOTE_SECONDS = float(args.note_seconds)
 CRY_DB = float(args.cry_db)
+CRY = args.cry if args.cry in ("model", "loudness", "off") else "model"
+if CRY_DB <= 0 and CRY == "loudness":
+    CRY = "off"
+model = None
+if CRY == "model" and not args.say:
+    try:
+        from cry_model import CryModel
+        from vexo_open.audio import PcmDecoder
+        model, decoder = CryModel(), PcmDecoder()
+    except Exception as problem:                      # not installed: say so and carry on with loudness
+        print("The cry model is not available (%s). Using loudness. To get it: pip install numpy ai-edge-litert av" % problem)
+        CRY = "loudness"
+
+# The cry model gives a number from 0 to 1 twice a second. Measured on two recordings of real
+# babies: median 0.54 and 0.83. On a person reading aloud: 0.00.
+MODEL_ON = 0.3         # a half second counts as crying from this number up
+MODEL_START = 2        # this many of the last 4 half seconds must count: crying started
+MODEL_QUIET = 0.2      # under this for all of the last 10 half seconds (5 s): crying stopped
 
 # How the cry detector decides. Guesses to tune on the real band; see SETUP.md.
 START_WINDOW = 4.0     # seconds looked at to decide "crying started"
@@ -125,6 +145,7 @@ class Cry:
 
     def __init__(self):
         self.readings = collections.deque()          # (time, loud?)
+        self.scores = collections.deque(maxlen=20)   # the cry model's last answers
         self.crying = False
         self.paused_until = 0.0
 
@@ -156,9 +177,23 @@ class Cry:
                 return "cry_end"
         return None
 
+    def feed_score(self, score):
+        """One answer of the cry model. Returns "cry_start", "cry_end" or None."""
+        if time.time() < self.paused_until:
+            return None
+        self.scores.append(score)
+        if not self.crying and sum(x >= MODEL_ON for x in list(self.scores)[-4:]) >= MODEL_START:
+            self.crying = True
+            return "cry_start"
+        if self.crying and len(self.scores) >= 10 and max(list(self.scores)[-10:]) < MODEL_QUIET:
+            self.crying = False
+            return "cry_end"
+        return None
+
     def set(self, crying, source):
         self.crying = crying
         self.readings.clear()
+        self.scores.clear()
         kind = "cry_start" if crying else "cry_end"
         print("%s  %s" % (time.strftime("%H:%M:%S"), "CRYING started" if crying else "Crying stopped"))
         post("/events", {"type": kind, "source": source})
@@ -172,7 +207,7 @@ def on_level(m):
     live["loudness"] = m.rms_db
     if args.meter == "yes":
         print("  loudness %2d  %s" % (m.rms_db, "#" * max(0, (60 - m.rms_db) // 2)))
-    if CRY_DB > 0:
+    if CRY == "loudness":
         change = cry.feed(m.rms_db)
         if change:
             todo.append(("cry", change))
@@ -245,7 +280,7 @@ def report(band_name):
     while True:
         time.sleep(0.5)
         if live["new"] or time.time() - last > 4:
-            body = {"name": band_name, "loudness": live["loudness"]}
+            body = {"name": band_name, "loudness": live["loudness"], "cry_score": live.get("cry")}
             if live["new"]:
                 body.update(heard=live["heard"], final=live["final"])
                 live["new"] = False
@@ -275,11 +310,31 @@ if CRY_DB > 0:
     band.configure(events=True, mic_level=0.1)
 else:
     band.configure(events=True)
+def on_sound(a):
+    """Every packet of sound: to Deepgram for the words, and to the cry model on this laptop."""
+    if ears:
+        ears.feed(a.opus, a.seq)
+    if model:
+        for score in model.feed_pcm(decoder.feed(a.opus, a.seq)):
+            live["cry"] = score
+            if args.meter == "yes":
+                print("  cry %.2f  %s" % (score, "#" * int(score * 30)))
+            change = cry.feed_score(score)
+            if change:
+                todo.append(("cry", change))
+
+
+ears = None
 if ALWAYS:
-    ears = speech.create().start(on_sentence)
-    band.on("audio", lambda a: ears.feed(a.opus, a.seq))
+    try:
+        ears = speech.create().start(on_sentence)
+    except VexoError as problem:
+        print("No speech to text: %s" % problem)
+if ALWAYS or model:
+    band.on("audio", on_sound)
     band.configure(audio=True)
-    print("Listening all the time: just talk. Only what is about the baby is logged.")
+    if ears:
+        print("Listening all the time: just talk. Only what is about the baby is logged.")
 threading.Thread(target=read_keyboard, daemon=True).start()
 threading.Thread(target=report, args=(band.name,), daemon=True).start()
 
@@ -287,8 +342,9 @@ print("Connected to %s. Writing to %s" % (band.name, API))
 print("Just talk near the band, or type a note here and press Enter." if ALWAYS
       else "Double-tap the band and speak a note. Or type a note here and press Enter.")
 print('Type "c" and Enter to switch crying on or off by hand. Stop with Ctrl+C.')
-if CRY_DB > 0:
-    print("Cry detection is on (loudness at or under %g). The band's light is solid blue: its microphone is on." % CRY_DB)
+print({"model": "Cry detection: a sound model on this laptop that knows a baby's cry.",
+       "loudness": "Cry detection: anything loud (loudness at or under %g) for a few seconds." % CRY_DB,
+       "off": "Cry detection is off."}[CRY if (model or CRY != "model") else "off"])
 
 ends = time.time() + args.seconds if args.seconds else None
 last_note = 0.0

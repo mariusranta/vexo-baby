@@ -1,0 +1,5 @@
+bleak
+pyserial
+av
+numpy
+ai-edge-litert

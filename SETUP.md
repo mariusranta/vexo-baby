@@ -16,9 +16,10 @@ The page remembers both, so after that the plain address works.
 ## Bridge
 
     git clone https://github.com/VexoAI-Org/vexo-open-kit.git      # inside this repo folder
-    python3 -m pip install bleak
+    uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -r bridge/requirements.txt
     cp env.example .env                                            # then fill in the keys
-    python3 bridge/bridge.py 42 --who YourName                     # 42 = the number on the band's bag
+    bridge/run-bluetooth.sh 42 YourName                            # 42 = the number on the band's bag. On a Mac: in Terminal.app
+    .venv/bin/python bridge/bridge.py 42 --usb --who YourName      # or on the USB cable
 
 Double-tap the band first so it can be found. Close the Vexo dashboard tab: one program at a time.
 
@@ -52,6 +53,8 @@ The AI uses Cloudflare's model until an OpenAI key is set: `npx wrangler secret 
 ## What is real and what is a guess
 
 - Real: spoken note to log entry, the log, the likely reason, the ask box, the phone page.
-- A guess to tune on the band: the cry detector. It only measures loudness, so loud talking next
-  to the band can set it off. The numbers are at the top of `bridge/bridge.py`.
+- The cry detector is YAMNet, Google's sound classifier, running on the laptop (`bridge/cry_model.py`).
+  On two recordings of real babies it scored 0.54 and 0.83 (median), on a person reading aloud 0.00.
+  Not yet measured through the band's microphone in a loud room. `--meter yes` prints the score.
+  `--cry loudness` goes back to the old loudness rule, `--cry off` leaves only `c` + Enter.
 - Staged for the demo: the day of history from `/api/reset`.

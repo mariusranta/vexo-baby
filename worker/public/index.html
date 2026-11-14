@@ -97,7 +97,7 @@ async function refresh() {
     $('evidence').replaceChildren(...(r.evidence || []).map((e) => Object.assign(document.createElement('li'), { textContent: e })));
     const band = s.band || {};
     $('bandState').className = 'dot ' + (band.online ? 'on' : 'off');
-    $('bandState').textContent = band.online ? '● ' + (band.name || 'Band') + ' is listening' + (band.loudness != null ? ' · loudness ' + band.loudness : '')
+    $('bandState').textContent = band.online ? '● ' + (band.name || 'Band') + ' is listening' + (band.cry_score != null ? ' · cry ' + Math.round(band.cry_score * 100) + '%' : '')
       : '○ Band offline' + (band.seen_seconds_ago != null ? ' (last seen ' + span(band.seen_seconds_ago / 60) + ' ago)' : '');
     $('heard').className = band.heard_final ? '' : 'live';
     $('heard').textContent = band.heard && band.heard_seconds_ago < 600 ? '“' + band.heard + '”' + (band.heard_seconds_ago > 5 ? '  · ' + span(band.heard_seconds_ago / 60) + ' ago' : '') : (band.online ? 'Nothing heard yet. Say something near the band.' : '');
