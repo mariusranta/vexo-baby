@@ -60,7 +60,7 @@ async function route(request, url, env, ctx) {
     const old = JSON.parse((await env.DB.prepare("SELECT value FROM meta WHERE key = 'band'").first())?.value || '{}');
     const band = { ...old, seen: now, name: body.name || old.name || null, loudness: body.loudness ?? old.loudness ?? null,
       cry_score: body.cry_score ?? null, movement: body.movement ?? null, restless_seconds: body.restless_seconds ?? 0 };
-    if (typeof body.heard === 'string') Object.assign(band, { heard: body.heard.slice(0, 300), heard_at: now, heard_final: !!body.final });
+    if (typeof body.heard === 'string') Object.assign(band, { heard: body.heard.slice(-300), heard_at: now, heard_final: !!body.final });
     await env.DB.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').bind('band', JSON.stringify(band)).run();
     return json({ ok: true });
   }
