@@ -7,16 +7,30 @@
   <meta name="description" content="Waby. A quiet presence.">
   <title>Waby</title>
   <link rel="stylesheet" href="/styles.css">
+  <script src="/feed.js" defer></script>
+  <script src="/orb.js" type="module"></script>
 </head>
 <body>
   <main class="ambient-screen" aria-label="Waby ambient screen">
     <h1 class="wordmark">Waby</h1>
+    <section class="text-feed" aria-label="Speech transcript">
+      <div class="feed-heading"><span class="feed-dot" id="feedDot" aria-hidden="true"></span><span id="feedStatus" role="status">Waiting for speech</span></div>
+      <div class="feed-scroll" id="feedScroll" tabindex="0" aria-label="Recent speech">
+        <div class="feed-history" id="feedHistory" role="log" aria-live="polite" aria-relevant="additions"></div>
+        <p class="feed-partial" id="feedPartial" aria-live="off" hidden></p>
+        <p class="feed-empty" id="feedEmpty">Your words will appear here.</p>
+      </div>
+    </section>
     <div class="presence" role="img" aria-label="A softly glowing amber orb">
       <div class="presence-glow" aria-hidden="true"></div>
       <div class="orb" aria-hidden="true">
         <div class="orb-depth"></div>
         <div class="orb-light"></div>
       </div>
+    </div>
+    <div class="voice-response">
+      <button id="voiceResponse" type="button" aria-pressed="false" aria-describedby="voiceResponseStatus">Enable voice response</button>
+      <span id="voiceResponseStatus" role="status">Microphone levels stay on this device.</span>
     </div>
   </main>
 </body>
