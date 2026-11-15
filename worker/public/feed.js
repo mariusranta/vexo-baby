@@ -31,7 +31,13 @@
   let active = false;
   let stopped = false;
 
-  function isAtEnd() { return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 45; }
+  // Follow the newest words unless the reader has just scrolled up to look at something older.
+  let readerScrolled = 0;
+  for (const name of ['wheel', 'touchmove']) scroller.addEventListener(name, () => { readerScrolled = Date.now(); }, { passive: true });
+  function isAtEnd() { return Date.now() - readerScrolled > 6000 || scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 45; }
+  function toEnd() { scroller.scrollTop = scroller.scrollHeight; requestAnimationFrame(() => { scroller.scrollTop = scroller.scrollHeight; }); }
+  // In a loud room a sentence never ends, so the live line keeps growing: show only its newest words.
+  const newest = (text) => { const words = text.split(/\s+/); return words.length > 32 ? '… ' + words.slice(-32).join(' ') : text; };
   function append(text, id) {
     if (!text || seen.has(id)) return;
     seen.add(id);
@@ -66,14 +72,14 @@
           newestBand = heard;
           partial.hidden = true;
         } else {
-          partial.textContent = heard;
+          partial.textContent = newest(heard);
           partial.hidden = false;
         }
       }
       // Restore an unchanged partial after a temporary network interruption, but
       // do not leave it looking live once the bridge disappears.
       if (!band.heard_final) {
-        partial.textContent = heard;
+        partial.textContent = newest(heard);
         partial.hidden = !band.online;
       }
     } else {
@@ -98,7 +104,7 @@
     }
     empty.hidden = history.children.length > 0 || !partial.hidden;
     setState(band.online ? 'Live transcription' : history.children.length || newestBand ? 'Recent speech' : 'Waiting for speech', Boolean(band.online));
-    if (follow) scroller.scrollTop = scroller.scrollHeight;
+    if (follow) toEnd();
   }
   async function get(path, signal) {
     const response = await fetch(path, { headers: { 'x-key': key }, cache: 'no-store', signal });
