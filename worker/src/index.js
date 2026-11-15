@@ -409,7 +409,7 @@ function factsText(f) {
     `Sleep in the last 24 hours: ${spoken(s.sleep_minutes_24h)}. Feeds in the last 24 hours: ${s.feeds_24h}. Times she cried: ${s.cries_24h}.`,
     s.crying ? `She is crying now, for ${spoken(Math.max(1, s.crying_minutes))}.` : 'She is not crying now.',
     s.restless_seconds >= 20 ? `The wristband's motion sensor feels her moving restlessly, for ${s.restless_seconds < 90 ? Math.round(s.restless_seconds) + ' seconds' : spoken(s.restless_seconds / 60)} now. Restless movement often comes before crying.`
-      : 'The wristband feels her calm and mostly still.',
+      : '',
     `Most likely need right now: ${r.cause} (${r.confidence} confidence). Try first: ${r.try_first}.`,
     f.episodes.filter((e) => e.calmed_by).length ? 'What ended her last cries: ' + f.episodes.filter((e) => e.calmed_by).slice(-3).map((e) => e.calmed_by).join('; ') + '.' : '',
   ];

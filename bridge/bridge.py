@@ -437,12 +437,13 @@ if ALWAYS or model:
     band.configure(audio=True)
     if ears:
         print("Listening all the time: just talk. Only what is about the baby is logged.")
-band.on("motion", on_motion)
-try:
-    band.set_motion(accel_range=8)            # a wriggle goes past the 2 g the sensor measures at first
-    band.configure(motion=25)
-except VexoError as problem:
-    print("No movement readings: %s" % problem)
+if os.environ.get("BABY_MOTION") == "yes":   # the movement signal is switched off for the demo; this turns it back on
+    band.on("motion", on_motion)
+    try:
+        band.set_motion(accel_range=8)        # a wriggle goes past the 2 g the sensor measures at first
+        band.configure(motion=25)
+    except VexoError as problem:
+        print("No movement readings: %s" % problem)
 threading.Thread(target=read_keyboard, daemon=True).start()
 threading.Thread(target=report, args=(band.name,), daemon=True).start()
 
