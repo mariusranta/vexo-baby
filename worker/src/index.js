@@ -64,6 +64,14 @@ async function route(request, url, env, ctx) {
     await env.DB.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').bind('band', JSON.stringify(band)).run();
     return json({ ok: true });
   }
+  if (path === '/clientlog') {
+    // The phone page reports what its sound is doing, so a problem can be seen from the laptop.
+    const lines = JSON.parse((await env.DB.prepare("SELECT value FROM meta WHERE key = 'clientlog'").first())?.value || '[]');
+    if (method === 'GET') return json({ lines });
+    lines.push(`${clock(now, tz)} ${String(body.msg || '').slice(0, 300)}`);
+    await env.DB.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').bind('clientlog', JSON.stringify(lines.slice(-25))).run();
+    return json({ ok: true });
+  }
   if (method === 'POST' && path === '/events') {
     if (!TYPES.includes(body.type)) return json({ error: 'type must be one of ' + TYPES.join(' ') }, 400);
     const event = await insert(env, { ...body, at: Number(body.at) || now, source: body.source || 'api' });
@@ -105,7 +113,7 @@ async function route(request, url, env, ctx) {
     return new Response(sound.body, { headers: { 'content-type': 'audio/mpeg', 'cache-control': 'no-store', ...CORS } });
   }
   if (method === 'POST' && path === '/reset') {
-    await env.DB.batch([env.DB.prepare('DELETE FROM events'), env.DB.prepare("DELETE FROM meta WHERE key NOT IN ('band')")]);
+    await env.DB.batch([env.DB.prepare('DELETE FROM events'), env.DB.prepare("DELETE FROM meta WHERE key NOT IN ('band', 'clientlog')")]);
     if (body.seed) for (const e of demoDay(now)) await insert(env, e);
     return json({ ok: true, seeded: !!body.seed });
   }
@@ -190,6 +198,7 @@ answer: you are also the voice of the baby's wristband. Fill it in only when the
 - a question to you about the baby ("when did she last eat?", "how long has she been up?", "why is she crying?"), or
 - a caretaker asking the baby what it needs ("are you hungry?", "are you tired, sweetie?", "what's wrong?"). Answer for the baby from the log: "Probably, yes. She last ate 2 hours 50 minutes ago and usually eats every 3 hours."
 One or two short sentences that sound natural read aloud: no lists, no symbols, "ounces" not "oz". Take every duration from "Facts right now" exactly as written there; never work one out yourself from clock times. Use only the facts and the log. Never medical advice beyond "call her parent or a doctor".
+A question is never an event: when the words are only a question, events is empty.
 Otherwise answer is null: for plain notes, small talk, questions about anything else, and whenever you are unsure the question is about the baby.
 If the words only repeat what the wristband itself just said (given below), return no events and a null answer.`;
 

@@ -139,16 +139,53 @@ for (const name of ['ended', 'error', 'pause']) player.addEventListener(name, ()
   document.body.classList.remove('speaking');
   if (!player.src.startsWith('data:')) $('voiceStatus').textContent = name === 'error' ? 'The voice could not play. The answer is on screen.' : statusLine;
 });
+// Phones refuse sound that starts without a tap, and an <audio> player has to be allowed again
+// for every new clip on some of them. A Web Audio engine does not: once any tap on the page has
+// started it, it stays allowed, so an answer to a question asked through the band can play by itself.
+let engine = null, source = null;
+const tell = (msg) => fetch('/api/clientlog', { method: 'POST', headers: { 'x-key': key, 'content-type': 'application/json' }, body: JSON.stringify({ msg }) }).catch(() => {});
+function unlockSound() {
+  try {
+    if (navigator.audioSession) navigator.audioSession.type = 'playback';       // iPhone: play even with the silent switch on
+    const Engine = window.AudioContext || window.webkitAudioContext;
+    if (Engine && !engine) { engine = new Engine(); tell('sound engine started by a tap'); }
+    if (engine && engine.state !== 'running') engine.resume();
+  } catch { engine = null; }
+}
+document.addEventListener('pointerdown', unlockSound);
+document.addEventListener('keydown', unlockSound);
 function stopSpeaking() {
   spokenReply = null;
   document.body.classList.remove('speaking');
   player.pause();
+  if (source) { try { source.onended = null; source.stop(); } catch { /* it had ended already */ } source = null; }
 }
-function speak(text, id) {
-  if (!$('readAloud').checked || listening || !text) return;
+async function speak(text, id) {
+  if (!$('readAloud').checked || listening || !text) { tell('not spoken (spoken replies ' + ($('readAloud').checked ? 'on' : 'OFF') + ', listening ' + listening + ')'); return; }
   stopSpeaking();
-  player.src = '/api/speech?' + (id ? 'id=' + id : 'text=' + encodeURIComponent(String(text).slice(0, 300))) + '&k=' + encodeURIComponent(key);
-  player.play().catch(() => { $('voiceStatus').textContent = 'Tick Spoken replies again to allow sound.'; });
+  const url = '/api/speech?' + (id ? 'id=' + id : 'text=' + encodeURIComponent(String(text).slice(0, 300))) + '&k=' + encodeURIComponent(key);
+  if (!engine) {                                       // no tap yet, or no Web Audio: the plain player
+    player.src = url;
+    player.play().then(() => tell('played with the audio tag'))
+      .catch((p) => { $('voiceStatus').textContent = 'Tap anywhere on the page once to allow sound.'; tell('FAILED audio tag: ' + p.name + ' ' + p.message); });
+    return;
+  }
+  try {
+    if (engine.state !== 'running') await engine.resume();
+    const bytes = await (await fetch(url)).arrayBuffer();
+    const sound = await new Promise((ok, no) => engine.decodeAudioData(bytes, ok, no));
+    const mine = source = engine.createBufferSource();
+    mine.buffer = sound;
+    mine.connect(engine.destination);
+    mine.onended = () => { if (source === mine) { source = null; document.body.classList.remove('speaking'); $('voiceStatus').textContent = statusLine; } };
+    mine.start();
+    document.body.classList.add('speaking');
+    $('voiceStatus').textContent = 'Waby is speaking.';
+    tell('played with the engine (' + engine.state + '): ' + String(text).slice(0, 40));
+  } catch (p) {
+    $('voiceStatus').textContent = 'The voice could not play. The answer is on screen.';
+    tell('FAILED engine: ' + (p && p.name) + ' ' + (p && p.message));
+  }
 }
 
 // ---- The band: what it hears, what it answers, and crying it detects. All from /status.
@@ -404,8 +441,9 @@ document.querySelectorAll('.suggestion').forEach((button) => button.addEventList
 }));
 $('readAloud').addEventListener('change', () => {
   if (!$('readAloud').checked) { stopSpeaking(); $('voiceStatus').textContent = 'Spoken replies off.'; return; }
-  player.src = SILENCE; player.play().catch(() => {});      // this tap is what lets the page speak later
+  unlockSound();                                            // this tap is what lets the page speak later
   $('voiceStatus').textContent = 'Spoken replies on.';
+  speak('Spoken replies are on.');                          // you should hear this
 });
 $('contextToggle').addEventListener('click', () => {
   if (listening) recognition.stop();
