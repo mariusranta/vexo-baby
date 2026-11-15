@@ -227,8 +227,10 @@ def on_level(m):
 
 # Movement: how much the band is being moved, from its motion sensor, 25 times a second.
 # The number is how far the strength of the acceleration swings over the last 2 seconds, in g.
-# Guesses until measured on a baby: lying still is under 0.03, wriggling is over RESTLESS_G.
-RESTLESS_G = float(os.environ.get("BABY_RESTLESS_G", "0.25"))
+# Measured on band 66 worn by an adult: at rest the middle value is 0.008 and small moves stay
+# under 0.07; picking the band up gives one reading of 0.2 to 0.5; wriggling it like a fussy
+# baby gives 1.1 to 3.9. Not measured on a real baby, whose wriggle is weaker.
+RESTLESS_G = float(os.environ.get("BABY_RESTLESS_G", "0.5"))
 shake = collections.deque(maxlen=50)
 restless = {"since": None, "last": 0.0}
 
