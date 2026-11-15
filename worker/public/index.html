@@ -3,87 +3,37 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f3f0ea">
-  <meta name="description" content="A quiet space to speak, understand your baby's day, and share care with Waby.">
-  <title>Waby — A little understanding</title>
+  <meta name="theme-color" content="#f1eee7">
+  <meta name="description" content="Waby. A quiet presence.">
+  <title>Waby</title>
   <link rel="stylesheet" href="/styles.css">
-  <script src="/app.js" defer></script>
+  <script src="/feed.js" defer></script>
+  <script src="/orb.js" type="module"></script>
+  <script src="/waby.js" defer></script>
 </head>
 <body>
-  <svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></symbol>
-    <symbol id="i-send" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7M12 5v15"/></symbol>
-    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3"/><circle cx="15" cy="17" r="3"/></symbol>
-    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
-    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
-  </svg>
-
-  <div class="app-shell">
-    <header class="app-header">
-      <a href="/" class="brand" aria-label="Waby home">waby<span>.</span></a>
-      <span class="header-divider" aria-hidden="true"></span>
-      <span class="tagline">The way to be with your new baby.</span>
-      <div class="header-actions">
-        <span class="connection" id="connection" role="status"><span class="connection-dot"></span><span id="connectionText">Connecting</span></span>
-        <button class="icon-button" id="contextToggle" aria-label="Open baby's care history" aria-expanded="false" aria-controls="careContext" title="Baby's day"><svg><use href="#i-clock"/></svg></button>
-        <button class="icon-button" id="settingsButton" aria-label="Connection settings" title="Connection settings"><svg><use href="#i-settings"/></svg></button>
+  <main class="ambient-screen" aria-label="Waby ambient screen">
+    <h1 class="wordmark">Waby</h1>
+    <section class="text-feed" aria-label="Speech transcript">
+      <div class="feed-heading"><span class="feed-dot" id="feedDot" aria-hidden="true"></span><span id="feedStatus" role="status">Waiting for speech</span></div>
+      <div class="feed-scroll" id="feedScroll" tabindex="0" aria-label="Recent speech">
+        <div class="feed-history" id="feedHistory" role="log" aria-live="polite" aria-relevant="additions"></div>
+        <p class="feed-partial" id="feedPartial" aria-live="off" hidden></p>
+        <p class="feed-empty" id="feedEmpty">Your words will appear here.</p>
       </div>
-    </header>
-
-    <main class="workspace">
-      <section class="conversation" aria-labelledby="conversationTitle">
-        <div class="conversation-top"><h1 id="conversationTitle">A MOMENT WITH WABY</h1><span class="session-label">Your care, in conversation</span></div>
-        <div class="conversation-scroll" id="conversationScroll" tabindex="0" aria-label="Conversation transcript">
-          <div class="welcome" id="welcome">
-            <div class="message-row assistant">
-              <span class="message-avatar" aria-hidden="true">w</span>
-              <div class="message-content"><span class="message-label">Waby <span class="label-detail">Your care companion</span></span><div class="message-bubble">A little understanding,<br>right when you need it.</div></div>
-            </div>
-            <p class="welcome-description">Talk through your baby's day.<br>I'll help you find the context in your care log.</p>
-            <div class="suggestions" aria-label="Conversation starters">
-              <span class="suggestions-label">A place to start</span>
-              <button class="suggestion" data-question="What happened around the last crying episode?">What happened around the last cry?<span aria-hidden="true">↗</span></button>
-              <button class="suggestion" data-question="Summarize the recorded care from the last 24 hours for the next caretaker, including any missing information.">Catch me up on today<span aria-hidden="true">↗</span></button>
-            </div>
-          </div>
-          <div class="messages" id="messages" role="log" aria-label="Conversation with Waby" aria-live="polite" aria-relevant="additions text"></div>
-          <div class="live-transcript" id="liveTranscript" hidden>
-            <span class="message-avatar user-avatar" aria-hidden="true">Y</span>
-            <div class="message-content"><span class="message-label" id="liveTranscriptLabel">You <span class="label-detail">Speaking</span></span><p id="liveTranscriptText"></p></div>
-          </div>
-        </div>
-
-        <div class="composer-area">
-          <form class="composer" id="chatForm">
-            <div class="composer-toolbar">
-              <div class="mode-switch" role="group" aria-label="Message action"><button type="button" class="mode active" id="askMode" aria-pressed="true">Ask Waby</button><button type="button" class="mode" id="logMode" aria-pressed="false">Log care</button></div>
-              <label class="read-aloud"><input type="checkbox" id="readAloud" checked><span>Spoken replies</span></label>
-            </div>
-            <div class="input-line"><label class="sr-only" for="message">Your message to Waby</label><textarea id="message" rows="1" maxlength="500" placeholder="Or put it into words…" aria-describedby="composerHint"></textarea><button type="submit" class="send-button" id="sendButton" aria-label="Send question" disabled><svg><use href="#i-send"/></svg></button></div>
-            <span class="composer-hint" id="composerHint">Answers come from your baby's recorded care.</span>
-          </form>
-        </div>
-      </section>
-    </main>
-
-    <div class="voice-dock">
-      <div class="voice-state"><span class="voice-state-dot" aria-hidden="true"></span><span id="voiceStatus" role="status">Ready when you are</span></div>
-      <button class="voice-trigger" id="startVoice" aria-label="Start voice input" aria-pressed="false"><svg><use href="#i-mic"/></svg><span id="startVoiceLabel">Tap to speak</span></button>
-      <button id="micButton" type="button" hidden aria-label="Start voice input" aria-pressed="false"></button>
-      <div class="orb-anchor" aria-hidden="true"><div class="orb-aura"></div><img class="listening-orb" src="/assets/waby-orb.png" alt="" width="1342" height="1172" fetchpriority="high" draggable="false"></div>
-      <span class="dock-caption">A little closer to understanding.</span>
+    </section>
+    <div class="presence" role="img" aria-label="A softly glowing amber orb">
+      <div class="presence-glow" aria-hidden="true"></div>
+      <div class="orb" aria-hidden="true">
+        <div class="orb-depth"></div>
+        <div class="orb-light"></div>
+      </div>
     </div>
-  </div>
-
-  <dialog class="care-context" id="careContext" aria-labelledby="contextTitle">
-    <div class="context-heading"><div><span class="eyebrow">YOUR SHARED CARE LOG</span><h2 id="contextTitle">Baby's day</h2></div><button class="icon-button" id="closeContext" aria-label="Close care history"><svg><use href="#i-close"/></svg></button></div>
-    <div class="baby-state" id="babyState"><span class="small-label">FROM THE CARE LOG</span><h3 id="stateText">Waiting for the log</h3><p id="stateDetail">Connect to see recorded activity.</p></div>
-    <div class="care-stats"><div><span>Last feed</span><strong id="fed">—</strong></div><div><span>Sleep in 24 hours</span><strong id="slept">—</strong></div><div><span>Last diaper change</span><strong id="diaper">—</strong></div></div>
-    <details class="insights" id="insights" hidden><summary>Possible context</summary><div><p id="cause"></p><p id="tryFirst"></p><p class="insight-label" id="confidence"></p><ul id="evidence"></ul><p class="uncertainty">An estimate from the log; the cause is unconfirmed.</p></div></details>
-    <div class="timeline-heading"><h3>Recent moments</h3><span id="updatedAt">Not synced yet</span></div><div class="timeline" id="timeline"><p class="empty-context">Your recorded care will appear here.</p></div>
-    <p class="context-footer">A shared story, so the next caretaker can pick up where you left off.</p>
-  </dialog>
-
-  <dialog id="settingsDialog" aria-labelledby="settingsTitle"><form id="settingsForm"><div class="dialog-heading"><h2 id="settingsTitle">Your connection</h2><button type="button" class="icon-button" id="closeSettings" aria-label="Close settings"><svg><use href="#i-close"/></svg></button></div><p>Use the shared access key for your baby's care log.</p><label for="accessKey">Access key</label><input id="accessKey" type="password" autocomplete="off" spellcheck="false"><label for="caregiverName">Your name <span>(optional)</span></label><input id="caregiverName" maxlength="80" autocomplete="given-name" placeholder="How should your care notes be signed?"><p class="settings-note">These details are remembered in this browser. Conversations stay in this tab. Voice input may use your browser's speech service.</p><button class="primary-button" type="submit">Save connection</button></form></dialog>
+    <div class="voice-response">
+      <button id="voiceResponse" type="button" aria-pressed="false" aria-describedby="voiceResponseStatus">Enable voice response</button>
+      <span id="voiceResponseStatus" role="status">Waiting for the band</span>
+      <a class="log-link" href="/classic/">Open the care log</a>
+    </div>
+  </main>
 </body>
 </html>
