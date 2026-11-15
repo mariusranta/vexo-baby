@@ -92,14 +92,21 @@
   });
 
   // ---- What Waby says, in the transcript.
+  // Waby's answer stays pinned above the live transcript, whole, so the words that keep
+  // arriving from the room cannot push it out of sight. It stays until the next answer,
+  // or for two minutes.
+  let saidTimer = null;
   function say(text, kind) {
-    const entry = document.createElement('p');
-    entry.className = 'feed-entry waby' + (kind === 'cry' ? ' cry' : '');
-    entry.textContent = text;
-    $('feedHistory').append(entry);
+    const box = $('wabySays');
+    box.className = 'waby-says' + (kind === 'cry' ? ' cry' : '') + (text.length > 170 ? ' long' : '');
+    box.textContent = text;
+    box.hidden = false;
+    box.scrollTop = 0;
+    clearTimeout(saidTimer);
+    saidTimer = setTimeout(() => { box.hidden = true; }, 120000);
     $('feedEmpty').hidden = true;
     const scroller = $('feedScroll');
-    scroller.scrollTop = scroller.scrollHeight;
+    requestAnimationFrame(() => { scroller.scrollTop = scroller.scrollHeight; });
   }
 
   // ---- The band's state, once a second.

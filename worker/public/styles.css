@@ -289,3 +289,20 @@ body.baby-crying .presence-glow { filter: hue-rotate(-28deg) saturate(1.5); }
 
 @media (max-width: 500px) { .menu-button { top: max(22px, calc(env(safe-area-inset-top) + 6px)); left: 18px; } .timeline { inset: 0 10% 0 0; padding-top: max(34px, calc(env(safe-area-inset-top) + 14px)); } }
 @media (prefers-reduced-motion: reduce) { .timeline, .timeline-shade { transition: none; } }
+
+
+/* ---- Waby's answer, pinned above the live transcript so it is always readable in full. */
+.waby-says {
+  flex: none; margin: 0 0 14px; padding: 0 6px 12px 0; max-height: 74%; overflow-y: auto;
+  border-bottom: 1px solid #d9d2c5; color: #8a4a12;
+  font-size: 21px; font-weight: 600; line-height: 1.38; letter-spacing: -.3px;
+}
+.waby-says::before { content: "Waby"; display: block; margin-bottom: 5px; font-size: 10.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; opacity: .7; }
+.waby-says.cry { color: #b8352a; }
+.waby-says.long { font-size: 17.5px; line-height: 1.42; letter-spacing: -.15px; }
+.feed-scroll { flex: 1 1 auto; }
+@media (max-width: 500px) { .waby-says { font-size: clamp(18px, 5.2vw, 21px); } .waby-says.long { font-size: clamp(15.5px, 4.4vw, 17.5px); } }
+/* While an answer is showing, the text area reaches further down and the live words get smaller, so both fit. */
+.text-feed:has(.waby-says:not([hidden])) { height: calc(64% - 112px); }
+.text-feed:has(.waby-says:not([hidden])) .feed-entry, .text-feed:has(.waby-says:not([hidden])) .feed-partial { font-size: 18px; line-height: 1.42; margin-bottom: 12px; letter-spacing: -.2px; }
+@media (max-width: 500px) { .text-feed:has(.waby-says:not([hidden])) { height: calc(66% - 100px); } }

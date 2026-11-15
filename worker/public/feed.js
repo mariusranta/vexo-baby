@@ -37,7 +37,7 @@
   function isAtEnd() { return Date.now() - readerScrolled > 6000 || scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 45; }
   function toEnd() { scroller.scrollTop = scroller.scrollHeight; requestAnimationFrame(() => { scroller.scrollTop = scroller.scrollHeight; }); }
   // In a loud room a sentence never ends, so the live line keeps growing: show only its newest words.
-  const newest = (text) => { const words = text.split(/\s+/); return words.length > 32 ? '… ' + words.slice(-32).join(' ') : text; };
+  const newest = (text) => { const words = text.split(/\s+/); return words.length > 22 ? '… ' + words.slice(-22).join(' ') : text; };
   function append(text, id) {
     if (!text || seen.has(id)) return;
     seen.add(id);
