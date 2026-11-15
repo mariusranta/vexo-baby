@@ -228,3 +228,64 @@ body.baby-crying .voice-response span { color: #b8352a; font-weight: 600; font-s
 body.baby-crying .orb { filter: hue-rotate(-28deg) saturate(1.5); }
 body.baby-crying .presence-glow { filter: hue-rotate(-28deg) saturate(1.5); }
 .log-link { display: inline-block; margin-top: 6px; font-size: 11px; color: #8a8072; text-decoration: underline; text-underline-offset: 3px; }
+
+
+/* ---- The menu in the top left and the timeline it opens (timeline.js). */
+.menu-button {
+  position: absolute; top: 30px; left: 26px; z-index: 6;
+  width: 40px; height: 40px; padding: 11px 9px; border: 0; border-radius: 50%;
+  display: flex; flex-direction: column; justify-content: space-between;
+  background: transparent; cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.menu-button span { display: block; height: 1.5px; border-radius: 2px; background: #837d72; }
+.menu-button span:nth-child(2) { width: 70%; }
+.menu-button:active { background: #0000000a; }
+.menu-button:focus-visible { outline: 1px solid #b0a595; }
+
+.timeline-shade { position: absolute; inset: 0; z-index: 7; background: #3a332c00; transition: background .3s ease; }
+.timeline-shade.open { background: #3a332c33; }
+
+.timeline {
+  position: absolute; inset: 0 14% 0 0; z-index: 8;
+  padding: 40px 22px 28px 26px; overflow-y: auto; overscroll-behavior: contain;
+  background: linear-gradient(170deg, #f6f3ec, #f3eee6);
+  border-right: 1px solid #ffffffb0; box-shadow: 18px 0 50px -30px #4b413a55;
+  transform: translateX(-104%); transition: transform .3s cubic-bezier(.2, .8, .2, 1);
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #5d5850;
+}
+.timeline.open { transform: none; }
+.timeline-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+.timeline h2 { margin: 0; font-size: 11px; font-weight: 400; letter-spacing: 1.7px; text-transform: uppercase; color: #837d72; }
+.timeline h3 { margin: 26px 0 12px; font-size: 11px; font-weight: 400; letter-spacing: 1.4px; text-transform: uppercase; color: #9a9387; }
+.timeline-close { width: 34px; height: 34px; border: 0; border-radius: 50%; background: transparent; color: #837d72; font-size: 22px; font-weight: 300; line-height: 1; cursor: pointer; }
+
+.now-state { margin: 0; font-size: 26px; font-weight: 300; letter-spacing: -.5px; color: #3f3a33; }
+.now-state.cry { color: #b4472f; }
+.now-reason { margin: 6px 0 0; font-size: 14px; line-height: 1.45; color: #7d776c; }
+.now-reason:empty { display: none; }
+
+.timeline-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 18px; }
+.timeline-stats .stat { padding: 10px 10px 9px; border: 1px solid #ffffffc0; border-radius: 14px; background: #ffffff66; }
+.timeline-stats b { display: block; font-size: 15px; font-weight: 500; color: #3f3a33; white-space: nowrap; }
+.timeline-stats span { display: block; margin-top: 2px; font-size: 10.5px; line-height: 1.25; color: #9a9387; }
+
+.timeline-list { list-style: none; margin: 0; padding: 0; }
+.moment { position: relative; display: grid; grid-template-columns: 58px 12px 1fr; gap: 0 8px; padding: 0 0 18px; }
+.moment time { padding-top: 1px; font-size: 12px; color: #9a9387; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.moment-dot { width: 9px; height: 9px; margin: 4px 0 0 1px; border-radius: 50%; background: #c9c1b3; }
+.moment::before { content: ''; position: absolute; left: 71px; top: 16px; bottom: 0; width: 1px; background: #d9d2c5; }
+.moment:last-child::before { display: none; }
+.moment.feed .moment-dot { background: #dd8a3c; }
+.moment.sleep .moment-dot { background: #7f93b8; }
+.moment.cry .moment-dot { background: #c2543b; }
+.moment.diaper .moment-dot { background: #a9b08a; }
+.moment.soothe .moment-dot { background: #c9a2b0; }
+.moment.live .moment-dot { box-shadow: 0 0 0 4px #c2543b2e; }
+.moment.sleep.live .moment-dot { box-shadow: 0 0 0 4px #7f93b82e; }
+.moment-body b { display: block; font-size: 15px; font-weight: 500; color: #3f3a33; }
+.moment.cry .moment-body b { color: #b4472f; }
+.moment-detail { display: block; margin-top: 1px; font-size: 13.5px; line-height: 1.4; color: #7d776c; }
+.moment-by { display: block; margin-top: 2px; font-size: 11px; color: #a8a195; }
+
+@media (max-width: 500px) { .menu-button { top: max(22px, calc(env(safe-area-inset-top) + 6px)); left: 18px; } .timeline { inset: 0 10% 0 0; padding-top: max(34px, calc(env(safe-area-inset-top) + 14px)); } }
+@media (prefers-reduced-motion: reduce) { .timeline, .timeline-shade { transition: none; } }

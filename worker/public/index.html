@@ -10,10 +10,20 @@
   <script src="/feed.js" defer></script>
   <script src="/orb.js" type="module"></script>
   <script src="/waby.js" defer></script>
+  <script src="/timeline.js" defer></script>
 </head>
 <body>
   <main class="ambient-screen" aria-label="Waby ambient screen">
+    <button class="menu-button" id="menuButton" type="button" aria-label="Open today's timeline" aria-expanded="false" aria-controls="timeline"><span></span><span></span><span></span></button>
     <h1 class="wordmark">Waby</h1>
+    <div class="timeline-shade" id="timelineShade" hidden></div>
+    <aside class="timeline" id="timeline" aria-label="Today's timeline" hidden>
+      <div class="timeline-head"><h2>Today</h2><button class="timeline-close" id="timelineClose" type="button" aria-label="Close timeline">×</button></div>
+      <div class="timeline-now" id="timelineNow"></div>
+      <div class="timeline-stats" id="timelineStats"></div>
+      <h3>Key moments</h3>
+      <ol class="timeline-list" id="timelineList"></ol>
+    </aside>
     <section class="text-feed" aria-label="Speech transcript">
       <div class="feed-heading"><span class="feed-dot" id="feedDot" aria-hidden="true"></span><span id="feedStatus" role="status">Waiting for speech</span></div>
       <div class="feed-scroll" id="feedScroll" tabindex="0" aria-label="Recent speech">
