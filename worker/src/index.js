@@ -86,7 +86,10 @@ async function route(request, url, env, ctx) {
   }
   if (method === 'GET' && path === '/speech') {
     // The newest answer as sound (Deepgram text to speech). The phone page plays it.
-    const speak = JSON.parse((await env.DB.prepare("SELECT value FROM meta WHERE key = 'speak'").first())?.value || 'null');
+    // ?text=... says those words (the page uses it to test the phone's sound); otherwise the newest answer.
+    const asked = (url.searchParams.get('text') || '').slice(0, 300);
+    const speak = asked ? { text: asked }
+      : JSON.parse((await env.DB.prepare("SELECT value FROM meta WHERE key = 'speak'").first())?.value || 'null');
     if (!speak) return json({ error: 'nothing to say' }, 404);
     if (!env.DEEPGRAM_API_KEY) return json({ error: 'DEEPGRAM_API_KEY is not set on the Worker' }, 500);
     const sound = await fetch('https://api.deepgram.com/v1/speak?model=' + (env.VOICE || 'aura-2-thalia-en'), {

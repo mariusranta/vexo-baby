@@ -89,10 +89,17 @@ const LABEL = { feed: 'Fed', diaper: 'Diaper', sleep_start: 'Fell asleep', sleep
 // Voice: phones only let a page make sound after a tap, so one tap on the button unlocks this player for good.
 const player = new Audio();
 let voiceOn = false, lastSpoken = null;
+const speechUrl = (extra) => '/api/speech?k=' + encodeURIComponent(KEY) + '&' + extra;
+function speak(url) {
+  player.src = url;
+  return player.play().then(() => { $('voice').textContent = '🔊 Voice answers are on'; })
+    .catch((p) => { $('voice').textContent = '🔇 No sound: ' + p.message + '. Tap to try again'; voiceOn = false; });
+}
 $('voice').onclick = () => {
   voiceOn = !voiceOn;
-  $('voice').textContent = voiceOn ? '🔊 Voice answers are on' : '🔊 Turn on voice answers';
-  if (voiceOn) { player.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA='; player.play().catch(() => {}); }
+  if (!voiceOn) { player.pause(); $('voice').textContent = '🔊 Turn on voice answers'; return; }
+  $('voice').textContent = '🔊 Starting…';
+  speak(speechUrl('text=' + encodeURIComponent('Voice answers are on.')));     // you should hear this
 };
 
 async function refresh() {
@@ -118,7 +125,7 @@ async function refresh() {
       if (s.speak.id !== lastSpoken) {
         const fresh = lastSpoken !== null && s.speak.seconds_ago < 30;     // not the one that was there when the page opened
         lastSpoken = s.speak.id;
-        if (fresh && voiceOn) { player.src = '/api/speech?id=' + s.speak.id + '&k=' + encodeURIComponent(KEY); player.play().catch(() => {}); }
+        if (fresh && voiceOn) speak(speechUrl('id=' + s.speak.id));
       }
     } else { $('said').textContent = ''; if (lastSpoken === null) lastSpoken = 0; }
     $('fed').textContent = span(s.last_feed_minutes_ago);
