@@ -1,3 +1,4 @@
+<img width="1414" height="2000" alt="Waby Device Overview" src="https://github.com/user-attachments/assets/ae5af247-65f6-49e8-ae03-8a0285483485" />
 # Waby
 
 A wristband for babies that keeps every caretaker on the same page.
