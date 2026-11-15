@@ -225,6 +225,35 @@ def on_level(m):
             todo.append(("cry", change))
 
 
+# Movement: how much the band is being moved, from its motion sensor, 25 times a second.
+# The number is how far the strength of the acceleration swings over the last 2 seconds, in g.
+# Guesses until measured on a baby: lying still is under 0.03, wriggling is over RESTLESS_G.
+RESTLESS_G = float(os.environ.get("BABY_RESTLESS_G", "0.25"))
+shake = collections.deque(maxlen=50)
+restless = {"since": None, "last": 0.0}
+
+
+def on_motion(m):
+    shake.append((m.ax ** 2 + m.ay ** 2 + m.az ** 2) ** 0.5)
+    if len(shake) < 25:
+        return
+    swing = max(shake) - min(shake)
+    now = time.time()
+    live["movement"] = round(swing, 3)
+    if swing >= RESTLESS_G:
+        restless["last"] = now
+        if restless["since"] is None:
+            restless["since"] = now
+    elif restless["since"] is not None and now - restless["last"] > 8:        # calm for 8 seconds: over
+        restless["since"] = None
+    live["restless"] = round(now - restless["since"], 1) if restless["since"] is not None else 0
+
+
+def reset_demo():
+    answer = post("/reset", {"seed": True})
+    print("  The demo day is fresh again." if answer else "  The reset did not work.")
+
+
 def read_keyboard():
     for line in sys.stdin:
         line = line.strip()
@@ -291,8 +320,11 @@ def report(band_name):
     last = 0.0
     while True:
         time.sleep(0.5)
-        if live["new"] or time.time() - last > 4:
-            body = {"name": band_name, "loudness": live["loudness"], "cry_score": live.get("cry")}
+        if live["new"] or time.time() - last > (1 if live.get("restless") else 4):
+            body = {"name": band_name, "loudness": live["loudness"], "cry_score": live.get("cry"),
+                    "movement": live.get("movement"), "restless_seconds": live.get("restless", 0)}
+            if args.meter == "yes":
+                print("  movement %.3f g  restless %s s" % (live.get("movement") or 0, live.get("restless", 0)), flush=True)
             if live["new"]:
                 body.update(heard=live["heard"], final=live["final"])
                 live["new"] = False
@@ -362,7 +394,9 @@ ABOUT_BABY = re.compile(r"\b(she|her|hers|he|him|his|baby|babies|fed|feed|feedin
                         r"sweetie|waby)\b", re.I)
 
 
-band = Band.connect(args.number, args.transport)
+band = Band.connect(args.number, args.transport, auto_reconnect=True, reconnect_seconds=300)
+band.on("reconnecting", lambda e: print("%s  The link to the band dropped. Getting it back..." % time.strftime("%H:%M:%S")))
+band.on("reconnected", lambda e: print("%s  The band is back." % time.strftime("%H:%M:%S")))
 if not ALWAYS:
     band.on("double-tap", lambda e: todo.append(("note",)))
 band.on("mic-level", on_level)
@@ -401,13 +435,19 @@ if ALWAYS or model:
     band.configure(audio=True)
     if ears:
         print("Listening all the time: just talk. Only what is about the baby is logged.")
+band.on("motion", on_motion)
+try:
+    band.set_motion(accel_range=8)            # a wriggle goes past the 2 g the sensor measures at first
+    band.configure(motion=25)
+except VexoError as problem:
+    print("No movement readings: %s" % problem)
 threading.Thread(target=read_keyboard, daemon=True).start()
 threading.Thread(target=report, args=(band.name,), daemon=True).start()
 
 print("Connected to %s. Writing to %s" % (band.name, API))
 print("Just talk near the band, or type a note here and press Enter." if ALWAYS
       else "Double-tap the band and speak a note. Or type a note here and press Enter.")
-print('Type "c" and Enter to switch crying on or off by hand. Stop with Ctrl+C.')
+print('Type "c" and Enter to switch crying on or off by hand, "reset" and Enter for a fresh demo day. Stop with Ctrl+C.')
 print({"model": "Cry detection: a sound model on this laptop that knows a baby's cry.",
        "loudness": "Cry detection: anything loud (loudness at or under %g) for a few seconds." % CRY_DB,
        "off": "Cry detection is off."}[CRY if (model or CRY != "model") else "off"])
@@ -430,6 +470,8 @@ try:
             elif job[0] == "typed":
                 if job[1].lower() == "c":
                     cry.set(not cry.crying, "manual")
+                elif job[1].lower() == "reset":
+                    reset_demo()
                 else:
                     send_note(job[1], "laptop")
             elif job[0] == "note" and time.time() - last_note > 3:        # one double-tap, one note

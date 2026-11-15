@@ -59,7 +59,7 @@ async function route(request, url, env, ctx) {
     // The bridge calls this every few seconds: it is alive, how loud it is, and the words it is hearing right now.
     const old = JSON.parse((await env.DB.prepare("SELECT value FROM meta WHERE key = 'band'").first())?.value || '{}');
     const band = { ...old, seen: now, name: body.name || old.name || null, loudness: body.loudness ?? old.loudness ?? null,
-      cry_score: body.cry_score ?? null };
+      cry_score: body.cry_score ?? null, movement: body.movement ?? null, restless_seconds: body.restless_seconds ?? 0 };
     if (typeof body.heard === 'string') Object.assign(band, { heard: body.heard.slice(0, 300), heard_at: now, heard_final: !!body.final });
     await env.DB.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').bind('band', JSON.stringify(band)).run();
     return json({ ok: true });
@@ -88,9 +88,10 @@ async function route(request, url, env, ctx) {
   if (method === 'POST' && path === '/ask') {
     const question = String(body.question || '').trim().slice(0, 500);
     if (!question) return json({ error: 'question is empty' }, 400);
-    const f = facts(await eventsSince(env, now - 48 * 60 * MIN), now);
+    const f = await withBand(env, facts(await eventsSince(env, now - 48 * 60 * MIN), now), now);
     const out = await llmJson(env,
       'You answer a caretaker\'s question about a baby from the log below. One or two short plain sentences. ' +
+      'If they ask to be caught up (a handoff, "what did I miss", "how was her day"), give three or four short sentences: the last feed and how much, sleep, the last diaper, any crying and what calmed her, anything a caretaker noted, and what she will most likely need next. ' +
       'It will be read aloud: say "ounces", not "oz". Use only the facts and the log. If they do not say, say so. Never give medical advice beyond "call the parent or a doctor".',
       `Time now: ${clock(now, tz)}\n\nFacts right now (already worked out; copy these durations word for word):\n${factsText(f)}\n\nLog (oldest first):\n${logLines(f.events, now, tz)}\n\nQuestion: ${question}`,
       { type: 'object', properties: { answer: { type: 'string' } }, required: ['answer'], additionalProperties: false });
@@ -124,7 +125,7 @@ async function route(request, url, env, ctx) {
 
 /** Something for the phone to say out loud. The page sees a new id in /status and plays /speech. */
 async function say(env, text, now, question = null, kind = 'answer') {
-  const speak = { id: now, text: String(text).slice(0, 400), question: question ? String(question).slice(0, 300) : null, kind };
+  const speak = { id: now, text: String(text).slice(0, 700), question: question ? String(question).slice(0, 300) : null, kind };
   await env.DB.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').bind('speak', JSON.stringify(speak)).run();
   return speak.id;
 }
@@ -197,14 +198,15 @@ detail: a few plain words, no full sentence. One note can hold several events. I
 answer: you are also the voice of the baby's wristband. Fill it in only when the words hold a question that the log can help with:
 - a question to you about the baby ("when did she last eat?", "how long has she been up?", "why is she crying?"), or
 - a caretaker asking the baby what it needs ("are you hungry?", "are you tired, sweetie?", "what's wrong?"). Answer for the baby from the log: "Probably, yes. She last ate 2 hours 50 minutes ago and usually eats every 3 hours."
-One or two short sentences that sound natural read aloud: no lists, no symbols, "ounces" not "oz". Take every duration from "Facts right now" exactly as written there; never work one out yourself from clock times. Use only the facts and the log. Never medical advice beyond "call her parent or a doctor".
+- a caretaker who is taking over and wants to be caught up ("what did I miss?", "give me the handoff", "catch me up", "how was her day?", "what happened while I was gone?"). Give the handoff in three or four short sentences: the last feed and how much, sleep, the last diaper, any crying and what calmed her, anything a caretaker noted, and what she will most likely need next.
+One or two short sentences (only a handoff may be longer) that sound natural read aloud: no lists, no symbols, "ounces" not "oz". Take every duration from "Facts right now" exactly as written there; never work one out yourself from clock times. Use only the facts and the log. Never medical advice beyond "call her parent or a doctor".
 A question is never an event: when the words are only a question, events is empty.
 Otherwise answer is null: for plain notes, small talk, questions about anything else, and whenever you are unsure the question is about the baby.
 If the words only repeat what the wristband itself just said (given below), return no events and a null answer.`;
 
 async function parseNote(env, text, now, tz) {
   try {
-    const f = facts(await eventsSince(env, now - 48 * 60 * MIN), now);
+    const f = await withBand(env, facts(await eventsSince(env, now - 48 * 60 * MIN), now), now);
     const spoke = JSON.parse((await env.DB.prepare("SELECT value FROM meta WHERE key = 'speak'").first())?.value || 'null');
     const out = await llmJson(env, NOTE_RULES,
       `Time now: ${clock(now, tz)}\nFacts right now (already worked out; copy these durations word for word in an answer):\n${factsText(f)}\n\n` +
@@ -282,6 +284,13 @@ function facts(events, now) {
   return { events, summary, episodes, lastId: events.reduce((m, e) => Math.max(m, e.id), 0) };
 }
 
+/** Adds what the wristband's motion sensor says right now: how long she has been moving restlessly. */
+async function withBand(env, f, now) {
+  const b = JSON.parse((await env.DB.prepare("SELECT value FROM meta WHERE key = 'band'").first())?.value || '{}');
+  f.summary.restless_seconds = b.seen && now - b.seen < 12000 ? Math.round(b.restless_seconds || 0) : 0;
+  return f;
+}
+
 // A guess from plain rules. Always available, instant, and the fallback when the model is slow or down.
 function ruleGuess(f) {
   const s = f.summary;
@@ -302,6 +311,7 @@ function ruleGuess(f) {
   const calmed = f.episodes.filter((e) => e.calmed_by).slice(-3).map((e) => e.calmed_by);
   const evidence = options.map((o) => o.why);
   if (calmed.length) evidence.push('Calmed before by: ' + [...new Set(calmed)].join(', '));
+  if (s.restless_seconds >= 20) evidence.push(`The band feels her moving restlessly for ${span(s.restless_seconds / 60) === '0 min' ? Math.round(s.restless_seconds) + ' s' : span(s.restless_seconds / 60)}`);
   if (top.score < 0.6) {
     return { cause: 'wants comfort', confidence: 'low', try_first: calmed.length ? `Try what worked before: ${calmed[calmed.length - 1]}` : 'Hold and rock',
       evidence, by: 'rules' };
@@ -336,7 +346,7 @@ If the cry has lasted over 20 minutes and nothing in the log explains it, say so
 }
 
 async function status(env, ctx, now, tz) {
-  const f = facts(await eventsSince(env, now - 48 * 60 * MIN), now);
+  const f = await withBand(env, facts(await eventsSince(env, now - 48 * 60 * MIN), now), now);
   let reason = ruleGuess(f);
   // The model's answer is worked out in the background, once per new event (and every 10 minutes), so this call stays fast.
   const key = `${f.lastId}:${Math.floor(now / (10 * MIN))}`;
@@ -350,7 +360,8 @@ async function status(env, ctx, now, tz) {
   const b = JSON.parse((await env.DB.prepare("SELECT value FROM meta WHERE key = 'band'").first())?.value || '{}');
   const band = {
     online: !!b.seen && now - b.seen < 12000, name: b.name || null, seen_seconds_ago: b.seen ? Math.round((now - b.seen) / 1000) : null,
-    loudness: b.loudness ?? null, cry_score: b.cry_score ?? null, heard: b.heard || null, heard_final: !!b.heard_final,
+    loudness: b.loudness ?? null, cry_score: b.cry_score ?? null,
+    movement: b.movement ?? null, restless_seconds: b.seen && now - b.seen < 12000 ? (b.restless_seconds || 0) : 0, heard: b.heard || null, heard_final: !!b.heard_final,
     heard_seconds_ago: b.heard_at ? Math.round((now - b.heard_at) / 1000) : null,
   };
   const spoke = JSON.parse((await env.DB.prepare("SELECT value FROM meta WHERE key = 'speak'").first())?.value || 'null');
@@ -397,6 +408,8 @@ function factsText(f) {
     s.last_diaper_minutes_ago === null ? 'No diaper change is in the log.' : `Last diaper change: ${spoken(s.last_diaper_minutes_ago)} ago (${s.last_diaper || 'no detail'}).`,
     `Sleep in the last 24 hours: ${spoken(s.sleep_minutes_24h)}. Feeds in the last 24 hours: ${s.feeds_24h}. Times she cried: ${s.cries_24h}.`,
     s.crying ? `She is crying now, for ${spoken(Math.max(1, s.crying_minutes))}.` : 'She is not crying now.',
+    s.restless_seconds >= 20 ? `The wristband's motion sensor feels her moving restlessly, for ${s.restless_seconds < 90 ? Math.round(s.restless_seconds) + ' seconds' : spoken(s.restless_seconds / 60)} now. Restless movement often comes before crying.`
+      : 'The wristband feels her calm and mostly still.',
     `Most likely need right now: ${r.cause} (${r.confidence} confidence). Try first: ${r.try_first}.`,
     f.episodes.filter((e) => e.calmed_by).length ? 'What ended her last cries: ' + f.episodes.filter((e) => e.calmed_by).slice(-3).map((e) => e.calmed_by).join('; ') + '.' : '',
   ];

@@ -219,6 +219,7 @@ function handleBand(status) {
   document.body.classList.toggle('band-online', Boolean(band.online));
   const reason = status.reason || {};
   statusLine = status.crying ? 'Crying detected' + (reason.cause ? ' · probably ' + reason.cause : '')
+    : band.online && band.restless_seconds >= 20 ? 'Moving restlessly for ' + Math.round(band.restless_seconds) + ' s · may cry soon'
     : band.online ? 'Band is listening' + (band.cry_score ? ' · cry ' + Math.round(band.cry_score * 100) + '%' : '') : 'Ready when you are';
   if (!busy && !listening && !document.body.classList.contains('speaking')) $('voiceStatus').textContent = statusLine;
   $('connectionText').textContent = band.online ? (band.name || 'Band') + ' connected' : 'Care log connected';
