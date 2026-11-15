@@ -15,13 +15,12 @@ Babies cry about two hours a day in their first weeks. Most of the stress for a 
 The band is on the baby. It listens, and it keeps one shared log.
 
 1. **Talk, and it logs.** Say "I just gave her a bottle, four ounces" near the band. It becomes a log entry. No app to open, no typing, hands stay free.
-2. **It hears crying.** A sound model on the laptop recognizes a baby's cry and logs when it starts and stops.
+2. **It hears crying.** A sound model on the device recognizes a baby's cry and logs when it starts and stops.
 3. **It says why, with evidence.** "She is crying, and she is probably hungry. She last ate 2 hours 50 minutes ago. Try this first: offer a feed."
-4. **Ask it anything.** "When did she last eat?" or "Are you hungry, sweetie?" It answers out loud in about 4 seconds.
+4. **Ask it anything.** "When did she last eat?" or "Are you hungry, sweetie?" It answers out loud.
 5. **It learns what works for this baby.** The log records what ended each cry (a feed, a pacifier, rocking), and uses that in its next suggestion.
-6. **Anyone can open the page.** One web link on any phone. Nothing to install.
 
-The reason for crying comes from this baby's own history, not from the sound of the cry. Cries differ too much between babies to read meaning from sound alone.
+The reason for crying comes from this baby's own history.
 
 ## How it works
 
