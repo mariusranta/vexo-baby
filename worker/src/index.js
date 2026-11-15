@@ -94,7 +94,8 @@ async function route(request, url, env, ctx) {
       'If they ask to be caught up (a handoff, "what did I miss", "how was her day"), give three or four short sentences: the last feed and how much, sleep, the last diaper, any crying and what calmed her, anything a caretaker noted, and what she will most likely need next. ' +
       'It will be read aloud: say "ounces", not "oz". Use only the facts and the log. If they do not say, say so. Never give medical advice beyond "call the parent or a doctor".',
       `Time now: ${clock(now, tz)}\n\nFacts right now (already worked out; copy these durations word for word):\n${factsText(f)}\n\nLog (oldest first):\n${logLines(f.events, now, tz)}\n\nQuestion: ${question}`,
-      { type: 'object', properties: { answer: { type: 'string' } }, required: ['answer'], additionalProperties: false });
+      { type: 'object', properties: { answer: { type: 'string' } }, required: ['answer'], additionalProperties: false })
+      .catch((problem) => { console.error('ask fell back to rules:', problem.message); return { answer: ruleAnswer(question, f) }; });
     return json({ answer: out.answer, speak_id: await say(env, out.answer, now, question) });
   }
   if (method === 'GET' && path === '/speech') {
@@ -205,8 +206,8 @@ Otherwise answer is null: for plain notes, small talk, questions about anything 
 If the words only repeat what the wristband itself just said (given below), return no events and a null answer.`;
 
 async function parseNote(env, text, now, tz) {
+  const f = await withBand(env, facts(await eventsSince(env, now - 48 * 60 * MIN), now), now);
   try {
-    const f = await withBand(env, facts(await eventsSince(env, now - 48 * 60 * MIN), now), now);
     const spoke = JSON.parse((await env.DB.prepare("SELECT value FROM meta WHERE key = 'speak'").first())?.value || 'null');
     const out = await llmJson(env, NOTE_RULES,
       `Time now: ${clock(now, tz)}\nFacts right now (already worked out; copy these durations word for word in an answer):\n${factsText(f)}\n\n` +
@@ -221,15 +222,60 @@ async function parseNote(env, text, now, tz) {
   } catch (problem) {
     console.error('note parser fell back to keywords:', problem.message);
   }
-  // No model, or it failed: keywords, so a note is never lost.
+  // No model, or it failed (for example the day's free allowance is used up): plain rules.
+  // A question is answered from the log and never logged; anything else is kept as a note by keywords.
+  if (isQuestion(text)) return { events: [], answer: ruleAnswer(text, f) };
   const t = text.toLowerCase();
+  if (!/\b(she|her|he|him|baby|fed|feed|ate|bottle|ounces?|oz|milk|formula|nurs\w*|diaper|poop\w*|pee\w*|asleep|nap\w*|sleep\w*|woke|awake|pacifier|burp\w*|rock\w*|swaddl\w*|medicine|fever)\b/.test(t)) return { events: [], answer: null };
   const amount = t.match(/(\d+(?:\.\d+)?)\s*(oz|ounces?|ml|minutes?|min)/);
   const type = /\b(fed|feed|ate|bottle|nurs|ounce|oz|milk|formula)/.test(t) ? 'feed'
     : /\b(diaper|poop|pee|changed)/.test(t) ? 'diaper'
     : /\b(woke|awake)/.test(t) ? 'sleep_end'
     : /\b(asleep|nap|sleeping|down for)/.test(t) ? 'sleep_start'
     : /\b(rock|pacifier|swaddl|held|burp)/.test(t) ? 'soothe' : 'note';
-  return { events: [{ type, at: now, amount: amount ? Number(amount[1]) : null, unit: amount ? amount[2].replace(/ounces?/, 'oz') : null, detail: text }], answer: null };
+  const words = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8 };
+  const spokenAmount = t.match(/\b(one|two|three|four|five|six|seven|eight)\s+(oz|ounces?)/);
+  const n = amount ? Number(amount[1]) : spokenAmount ? words[spokenAmount[1]] : null;
+  const unit = amount ? amount[2].replace(/ounces?/, 'oz').replace(/minutes?/, 'min') : spokenAmount ? 'oz' : null;
+  const detail = type === 'feed' ? (/bottle/.test(t) ? 'bottle' : /nurs|breast/.test(t) ? 'breast' : 'feed')
+    : type === 'diaper' ? (/dirty|poop/.test(t) ? 'dirty' : 'wet')
+    : type === 'soothe' ? (t.match(/pacifier|rock\w*|swaddl\w*|burp\w*|held/) || ['soothed'])[0] : text.slice(0, 80);
+  return { events: [{ type, at: now, amount: n, unit, detail }], answer: null };
+}
+
+// ---------------------------------------------------------------- answers without a model
+
+function isQuestion(text) {
+  const t = text.trim().toLowerCase();
+  return /\?\s*$/.test(t) || /\?/.test(t) && t.split(/\s+/).length < 16
+    || /^(when|what|how|why|is|are|did|does|has|have|should|can you|could you|tell me|give me)\b/.test(t)
+    || /\b(what did i miss|hand ?off|hand ?over|catch me up|taking over|how was her day)\b/.test(t);
+}
+
+/** An answer straight from the log, by keywords. Used whenever the model cannot be reached. */
+function ruleAnswer(text, f) {
+  const t = text.toLowerCase(), s = f.summary, r = ruleGuess(f);
+  const fed = s.last_feed_minutes_ago === null ? 'There is no feed in the log yet'
+    : `She ${s.last_feed_minutes_ago < 2 ? 'ate just now' : `last ate ${spoken(s.last_feed_minutes_ago)} ago`}${s.last_feed_amount ? `, ${s.last_feed_amount} ${unitWord(s.last_feed_unit)}` : ''}`;
+  const awake = s.asleep ? `She is asleep, for ${spoken(s.asleep_minutes)} now` : s.awake_minutes !== null ? `She has been awake for ${spoken(s.awake_minutes)}` : 'There is no sleep in the log yet';
+  const diaper = s.last_diaper_minutes_ago === null ? 'There is no diaper change in the log yet'
+    : `Her last diaper change was ${spoken(s.last_diaper_minutes_ago)} ago${s.last_diaper ? `, it was ${s.last_diaper}` : ''}`;
+  const calmed = [...new Set(f.episodes.filter((e) => e.calmed_by).slice(-3).map((e) => e.calmed_by.replace(/^feed.*/, 'a feed').replace(/^soothe \((.*)\)/, '$1').replace(/^soothe$/, 'soothing').replace(/^diaper.*/, 'a diaper change').replace(/^sleep_start.*/, 'falling asleep')))];
+  const next = `Next she will most likely be ${r.cause.replace(/^needs/, 'needing').replace(/^wants/, 'wanting')}`;
+  if (/\b(miss|hand ?off|hand ?over|catch me up|taking over|her day|while i was)\b/.test(t)) {
+    return `${fed}. ${awake}. ${diaper}. ${s.cries_24h ? `She cried ${s.cries_24h} time${s.cries_24h === 1 ? '' : 's'} today${calmed.length ? ', calmed by ' + calmed.join(' and ') : ''}. ` : ''}${next}, so ${r.try_first.toLowerCase()}.`;
+  }
+  if (/\b(why|wrong|crying|cry|cries|fuss\w*|upset|need)\b/.test(t)) {
+    const why = r.cause === 'tired' ? awake : r.cause.includes('diaper') ? diaper : fed;
+    return s.crying ? `She is probably ${r.cause}. ${why}. Try this first: ${r.try_first.toLowerCase()}.`
+      : `She is not crying now. ${next}. ${why}.`;
+  }
+  if (/\bhungry\b/.test(t)) return `${r.cause === 'hungry' ? 'Probably, yes' : 'Probably not yet'}. ${fed}${s.usual_feed_gap_minutes ? ` and she usually eats about every ${spoken(Math.round(s.usual_feed_gap_minutes / 15) * 15)}` : ''}.`;
+  if (/\b(tired|sleepy)\b/.test(t)) return `${r.cause === 'tired' ? 'Probably, yes' : 'Probably not yet'}. ${awake}.`;
+  if (/\b(eat|ate|eaten|fed|feed|feeding|bottle|milk|ounces?)\b/.test(t)) return `${fed}.`;
+  if (/\b(sleep|slept|nap|napped|awake|asleep|wake|woke|up)\b/.test(t)) return `${awake}. She slept ${spoken(s.sleep_minutes_24h)} in the last 24 hours.`;
+  if (/\b(diaper|changed|change|poop\w*|pee\w*)\b/.test(t)) return `${diaper}.`;
+  return /\b(she|her|baby)\b/.test(t) ? `${fed}. ${awake}. ${next}.` : null;      // not about the baby: say nothing
 }
 
 // ---------------------------------------------------------------- facts from the log
