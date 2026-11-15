@@ -151,6 +151,22 @@ function unlockSound() {
     if (Engine && !engine) { engine = new Engine(); tell('sound engine started by a tap'); }
     if (engine && engine.state !== 'running') engine.resume();
   } catch { engine = null; }
+  if (!playerUnlocked) {                                // the same tap also allows the plain player, on phones that remember it
+    playerUnlocked = true;
+    player.src = quietClip();
+    player.play().catch(() => { playerUnlocked = false; });
+  }
+}
+let playerUnlocked = false;
+/** A tenth of a second of silence as a real WAV file (an empty one is refused by some phones). */
+function quietClip() {
+  const samples = 800, bytes = new Uint8Array(44 + samples), view = new DataView(bytes.buffer);
+  const text = (at, word) => [...word].forEach((c, i) => { bytes[at + i] = c.charCodeAt(0); });
+  text(0, 'RIFF'); view.setUint32(4, 36 + samples, true); text(8, 'WAVEfmt '); view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, 8000, true); view.setUint32(28, 8000, true);
+  view.setUint16(32, 1, true); view.setUint16(34, 8, true); text(36, 'data'); view.setUint32(40, samples, true);
+  bytes.fill(128, 44);
+  return 'data:audio/wav;base64,' + btoa(String.fromCharCode(...bytes));
 }
 document.addEventListener('pointerdown', unlockSound);
 document.addEventListener('keydown', unlockSound);
@@ -164,11 +180,15 @@ async function speak(text, id) {
   if (!$('readAloud').checked || listening || !text) { tell('not spoken (spoken replies ' + ($('readAloud').checked ? 'on' : 'OFF') + ', listening ' + listening + ')'); return; }
   stopSpeaking();
   const url = '/api/speech?' + (id ? 'id=' + id : 'text=' + encodeURIComponent(String(text).slice(0, 300))) + '&k=' + encodeURIComponent(key);
-  if (!engine) {                                       // no tap yet, or no Web Audio: the plain player
+  // The plain player first: it starts while the sound is still arriving (about 2 seconds sooner).
+  // If the phone refuses it, the engine below plays the same clip.
+  try {
     player.src = url;
-    player.play().then(() => tell('played with the audio tag'))
-      .catch((p) => { $('voiceStatus').textContent = 'Tap anywhere on the page once to allow sound.'; tell('FAILED audio tag: ' + p.name + ' ' + p.message); });
+    await player.play();
+    tell('played with the audio tag');
     return;
+  } catch (p) {
+    if (!engine) { $('voiceStatus').textContent = 'Tap anywhere on the page once to allow sound.'; tell('FAILED audio tag, no engine: ' + p.name + ' ' + p.message); return; }
   }
   try {
     if (engine.state !== 'running') await engine.resume();
@@ -459,4 +479,4 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('pagehide', () => { if (listening) recognition.abort(); stopSpeaking(); });
 initializeVoice(); updateControls(); refresh();
-setInterval(() => { if (!document.hidden) refresh(); }, 1500);
+setInterval(() => { if (!document.hidden) refresh(); }, 700);

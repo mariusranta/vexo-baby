@@ -20,6 +20,7 @@
 import collections
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -140,7 +141,7 @@ def send_note(text, source):
         words = answer["answer"]
         print("  Says: %s" % words)
         # The phone now reads this aloud next to the band: do not take our own voice for a caretaker's.
-        said["mute_until"] = time.time() + 4 + len(words.split()) / 2.2
+        said["mute_until"] = time.time() + 2.5 + len(words.split()) / 2.5
         said["ready"] = []
     elif answer is not None and not answer.get("events"):
         print("  Nothing about the baby in that, so nothing was logged.")
@@ -329,17 +330,36 @@ def on_sentence(text, final):
 
 
 def words_to_send():
-    """A piece of talk to send on, or None. A finished sentence at once; an unfinished one
-    when nothing new came for a second, or when its first unsent word is 5 seconds old."""
+    """A piece of talk to send on, or None. Deepgram puts in the punctuation as it goes, so a
+    question is sent the moment its question mark shows up, and a finished sentence as soon as
+    the next one starts. Words with no end in sight go when nothing new came for a second, or
+    when the first of them is 5 seconds old."""
     if said["ready"]:
         return said["ready"].pop(0)
     words = said["text"].split()
+    unsent = words[said["sent"]:]
+    if not unsent:
+        return None
     now = time.time()
-    if len(words) > said["sent"] and (now - said["changed"] > 1.0 or now - said["oldest"] > 5):
-        piece = " ".join(words[said["sent"]:])
+    ends = [i for i, w in enumerate(unsent) if w[-1] in "?!."]
+    if ends:
+        last = ends[-1]
+        if unsent[last].endswith("?") or last < len(unsent) - 1 or now - said["changed"] > 0.4:
+            said["sent"] += last + 1
+            said["oldest"] = now
+            return " ".join(unsent[:last + 1])
+    if now - said["changed"] > 1.0 or now - said["oldest"] > 5:
         said["sent"] = len(words)
-        return piece
+        return " ".join(unsent)
     return None
+
+
+# Talk that cannot be about the baby is not sent to the API at all: faster, and the room's
+# chatter does not use up the model. Anything with one of these words goes on; the API decides.
+ABOUT_BABY = re.compile(r"\b(she|her|hers|he|him|his|baby|babies|fed|feed|feeding|ate|eat|eaten|eating|bottle|ounces?|oz|milk|"
+                        r"formula|nurs\w*|breast\w*|diapers?|poop\w*|pee\w*|sleep\w*|slept|asleep|naps?|napping|woke|awake|wake|"
+                        r"cry|cries|crying|cried|fuss\w*|hungry|tired|sleepy|pacifier|burp\w*|rock\w*|swaddl\w*|medicine|fever|"
+                        r"sweetie|waby)\b", re.I)
 
 
 band = Band.connect(args.number, args.transport)
@@ -401,7 +421,7 @@ try:
         piece = words_to_send() if ALWAYS else None
         if piece:
             print("%s  Heard: %s" % (time.strftime("%H:%M:%S"), piece))
-            if len(piece.split()) >= 2:
+            if len(piece.split()) >= 2 and ABOUT_BABY.search(piece):
                 send_note(piece, "band-voice")
         while todo:
             job = todo.popleft()
