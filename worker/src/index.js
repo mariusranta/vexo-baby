@@ -52,8 +52,8 @@ async function route(request, url, env, ctx) {
     for (const e of parsed) {
       saved.push(await insert(env, { ...e, source: body.source || 'phone', who: body.who, raw: text }));
     }
-    if (answer) await say(env, answer, now);
-    return json({ events: saved, answer: answer || null });
+    const speak_id = answer ? await say(env, answer, now, text) : null;
+    return json({ events: saved, answer: answer || null, speak_id });
   }
   if (method === 'POST' && path === '/band') {
     // The bridge calls this every few seconds: it is alive, how loud it is, and the words it is hearing right now.
@@ -66,7 +66,12 @@ async function route(request, url, env, ctx) {
   }
   if (method === 'POST' && path === '/events') {
     if (!TYPES.includes(body.type)) return json({ error: 'type must be one of ' + TYPES.join(' ') }, 400);
-    return json({ event: await insert(env, { ...body, at: Number(body.at) || now, source: body.source || 'api' }) });
+    const event = await insert(env, { ...body, at: Number(body.at) || now, source: body.source || 'api' });
+    let speak_id = null;
+    if (body.type === 'cry_start') {
+      speak_id = await say(env, cryWords(facts(await eventsSince(env, now - 48 * 60 * MIN), now)), now, null, 'cry');
+    }
+    return json({ event, speak_id });
   }
   if (method === 'DELETE' && path.startsWith('/events/')) {
     await env.DB.prepare('DELETE FROM events WHERE id = ?').bind(Number(path.slice(8))).run();
@@ -81,8 +86,7 @@ async function route(request, url, env, ctx) {
       'It will be read aloud: say "ounces", not "oz". Use only the facts and the log. If they do not say, say so. Never give medical advice beyond "call the parent or a doctor".',
       `Time now: ${clock(now, tz)}\n\nFacts right now (already worked out; copy these durations word for word):\n${factsText(f)}\n\nLog (oldest first):\n${logLines(f.events, now, tz)}\n\nQuestion: ${question}`,
       { type: 'object', properties: { answer: { type: 'string' } }, required: ['answer'], additionalProperties: false });
-    await say(env, out.answer, now);
-    return json({ answer: out.answer });
+    return json({ answer: out.answer, speak_id: await say(env, out.answer, now, question) });
   }
   if (method === 'GET' && path === '/speech') {
     // The newest answer as sound (Deepgram text to speech). The phone page plays it.
@@ -111,9 +115,22 @@ async function route(request, url, env, ctx) {
 // ---------------------------------------------------------------- storage
 
 /** Something for the phone to say out loud. The page sees a new id in /status and plays /speech. */
-async function say(env, text, now) {
-  await env.DB.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)')
-    .bind('speak', JSON.stringify({ id: now, text: String(text).slice(0, 400) })).run();
+async function say(env, text, now, question = null, kind = 'answer') {
+  const speak = { id: now, text: String(text).slice(0, 400), question: question ? String(question).slice(0, 300) : null, kind };
+  await env.DB.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').bind('speak', JSON.stringify(speak)).run();
+  return speak.id;
+}
+
+/** What the wristband says by itself when crying starts: the likely need, with the fact behind it. */
+function cryWords(f) {
+  const s = f.summary, r = ruleGuess(f);
+  const why = r.cause === 'hungry' && s.last_feed_minutes_ago !== null ? `She last ate ${spoken(s.last_feed_minutes_ago)} ago.`
+    : r.cause === 'tired' && s.awake_minutes !== null ? `She has been awake for ${spoken(s.awake_minutes)}.`
+    : r.cause === 'needs a diaper change' && s.last_diaper_minutes_ago !== null ? `Her last diaper change was ${spoken(s.last_diaper_minutes_ago)} ago.`
+    : 'She was fed, changed and rested not long ago.';
+  const need = r.cause === 'hungry' ? 'she is probably hungry' : r.cause === 'tired' ? 'she is probably tired'
+    : r.cause === 'needs a diaper change' ? 'she probably needs a diaper change' : 'she probably wants comfort';
+  return `She is crying, and ${need}. ${why} Try this first: ${r.try_first.charAt(0).toLowerCase() + r.try_first.slice(1)}.`;
 }
 
 async function eventsSince(env, since) {
@@ -328,7 +345,7 @@ async function status(env, ctx, now, tz) {
     heard_seconds_ago: b.heard_at ? Math.round((now - b.heard_at) / 1000) : null,
   };
   const spoke = JSON.parse((await env.DB.prepare("SELECT value FROM meta WHERE key = 'speak'").first())?.value || 'null');
-  const speak = spoke && now - spoke.id < 5 * MIN ? { id: spoke.id, text: spoke.text, seconds_ago: Math.round((now - spoke.id) / 1000) } : null;
+  const speak = spoke && now - spoke.id < 5 * MIN ? { id: spoke.id, text: spoke.text, question: spoke.question || null, kind: spoke.kind || 'answer', seconds_ago: Math.round((now - spoke.id) / 1000) } : null;
   return { now, ...f.summary, reason, episodes: f.episodes.slice(-5), band, speak };
 }
 

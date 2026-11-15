@@ -1,155 +1,89 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Baby log</title>
-<style>
-  :root { --bg:#f6f4ef; --card:#fff; --ink:#1d1b16; --soft:#6f6a5e; --line:#e6e1d6; --calm:#2f7d5b; --warn:#b7791f; --cry:#c0392b; --accent:#2b5fd9; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#14130f; --card:#1f1d18; --ink:#f1ede3; --soft:#a39d8e; --line:#35322a; --calm:#5fc194; --warn:#e3a74a; --cry:#f07a6b; --accent:#7ea2ff; } }
-  * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.4 -apple-system, system-ui, sans-serif; }
-  main { max-width:520px; margin:0 auto; padding:16px; }
-  h1 { font-size:15px; font-weight:600; color:var(--soft); margin:4px 0 12px; display:flex; justify-content:space-between; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px; margin-bottom:12px; }
-  #state { font-size:28px; font-weight:700; }
-  #state.cry { color:var(--cry); } #state.calm { color:var(--calm); } #state.sleep { color:var(--accent); }
-  #cause { font-size:20px; font-weight:600; margin-top:10px; }
-  #try { margin-top:4px; }
-  #conf { font-size:12px; color:var(--soft); text-transform:uppercase; letter-spacing:.05em; margin-top:10px; }
-  ul { margin:6px 0 0; padding-left:18px; color:var(--soft); font-size:14px; }
-  .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:12px; }
-  .stat { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:10px 12px; }
-  .stat b { display:block; font-size:18px; } .stat span { font-size:12px; color:var(--soft); }
-  form { display:flex; gap:8px; } input { flex:1; min-width:0; font:inherit; padding:12px; border-radius:12px; border:1px solid var(--line); background:var(--bg); color:var(--ink); }
-  button { font:inherit; font-weight:600; padding:12px 16px; border-radius:12px; border:0; background:var(--accent); color:#fff; }
-  button.ghost { background:transparent; color:var(--accent); border:1px solid var(--line); }
-  #answer { margin-top:10px; font-size:15px; } #answer:empty { display:none; }
-  .row { display:flex; gap:10px; padding:9px 0; border-top:1px solid var(--line); font-size:15px; }
-  .row:first-child { border-top:0; } .row time { color:var(--soft); width:64px; flex:none; font-variant-numeric:tabular-nums; }
-  .row .who { color:var(--soft); font-size:12px; } .row.cry_start b, .row.cry_end b { color:var(--cry); }
-  .dot { color:var(--soft); font-size:12px; }
-  #bandState.on { color:var(--calm); font-weight:600; } #bandState.off { color:var(--cry); font-weight:600; }
-  #heard { margin-top:6px; font-size:15px; min-height:1.4em; } #heard.live { color:var(--soft); font-style:italic; }
-  #band { padding:12px 16px; }
-  #said { margin-top:8px; font-size:16px; font-weight:600; color:var(--accent); } #said:empty { display:none; }
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f3f0ea">
+  <meta name="description" content="A quiet space to speak, understand your baby's day, and share care with Waby.">
+  <title>Waby — A little understanding</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
 </head>
 <body>
-<main>
-  <h1><span>Baby log</span><span class="dot" id="live">connecting</span></h1>
+  <svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7M12 5v15"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3"/><circle cx="15" cy="17" r="3"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+  </svg>
 
-  <div class="card">
-    <div id="state">…</div>
-    <div id="cause"></div>
-    <div id="try"></div>
-    <div id="conf"></div>
-    <ul id="evidence"></ul>
+  <div class="app-shell">
+    <header class="app-header">
+      <a href="/" class="brand" aria-label="Waby home">waby<span>.</span></a>
+      <span class="header-divider" aria-hidden="true"></span>
+      <span class="tagline">The way to be with your new baby.</span>
+      <div class="header-actions">
+        <span class="connection" id="connection" role="status"><span class="connection-dot"></span><span id="connectionText">Connecting</span></span>
+        <button class="icon-button" id="contextToggle" aria-label="Open baby's care history" aria-expanded="false" aria-controls="careContext" title="Baby's day"><svg><use href="#i-clock"/></svg></button>
+        <button class="icon-button" id="settingsButton" aria-label="Connection settings" title="Connection settings"><svg><use href="#i-settings"/></svg></button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <section class="conversation" aria-labelledby="conversationTitle">
+        <div class="conversation-top"><h1 id="conversationTitle">A MOMENT WITH WABY</h1><span class="session-label">Your care, in conversation</span></div>
+        <div class="conversation-scroll" id="conversationScroll" tabindex="0" aria-label="Conversation transcript">
+          <div class="welcome" id="welcome">
+            <div class="message-row assistant">
+              <span class="message-avatar" aria-hidden="true">w</span>
+              <div class="message-content"><span class="message-label">Waby <span class="label-detail">Your care companion</span></span><div class="message-bubble">A little understanding,<br>right when you need it.</div></div>
+            </div>
+            <p class="welcome-description">Talk through your baby's day.<br>I'll help you find the context in your care log.</p>
+            <div class="suggestions" aria-label="Conversation starters">
+              <span class="suggestions-label">A place to start</span>
+              <button class="suggestion" data-question="What happened around the last crying episode?">What happened around the last cry?<span aria-hidden="true">↗</span></button>
+              <button class="suggestion" data-question="Summarize the recorded care from the last 24 hours for the next caretaker, including any missing information.">Catch me up on today<span aria-hidden="true">↗</span></button>
+            </div>
+          </div>
+          <div class="messages" id="messages" role="log" aria-label="Conversation with Waby" aria-live="polite" aria-relevant="additions text"></div>
+          <div class="live-transcript" id="liveTranscript" hidden>
+            <span class="message-avatar user-avatar" aria-hidden="true">Y</span>
+            <div class="message-content"><span class="message-label" id="liveTranscriptLabel">You <span class="label-detail">Speaking</span></span><p id="liveTranscriptText"></p></div>
+          </div>
+        </div>
+
+        <div class="composer-area">
+          <form class="composer" id="chatForm">
+            <div class="composer-toolbar">
+              <div class="mode-switch" role="group" aria-label="Message action"><button type="button" class="mode active" id="askMode" aria-pressed="true">Ask Waby</button><button type="button" class="mode" id="logMode" aria-pressed="false">Log care</button></div>
+              <label class="read-aloud"><input type="checkbox" id="readAloud"><span>Spoken replies</span></label>
+            </div>
+            <div class="input-line"><label class="sr-only" for="message">Your message to Waby</label><textarea id="message" rows="1" maxlength="500" placeholder="Or put it into words…" aria-describedby="composerHint"></textarea><button type="submit" class="send-button" id="sendButton" aria-label="Send question" disabled><svg><use href="#i-send"/></svg></button></div>
+            <span class="composer-hint" id="composerHint">Answers come from your baby's recorded care.</span>
+          </form>
+        </div>
+      </section>
+    </main>
+
+    <div class="voice-dock">
+      <div class="voice-state"><span class="voice-state-dot" aria-hidden="true"></span><span id="voiceStatus" role="status">Ready when you are</span></div>
+      <button class="voice-trigger" id="startVoice" aria-label="Start voice input" aria-pressed="false"><svg><use href="#i-mic"/></svg><span id="startVoiceLabel">Tap to speak</span></button>
+      <button id="micButton" type="button" hidden aria-label="Start voice input" aria-pressed="false"></button>
+      <div class="orb-anchor" aria-hidden="true"><div class="orb-aura"></div><img class="listening-orb" src="/assets/waby-orb.png" alt="" width="1342" height="1172" fetchpriority="high" draggable="false"></div>
+      <span class="dock-caption">A little closer to understanding.</span>
+    </div>
   </div>
 
-  <div class="card" id="band">
-    <div id="bandState" class="dot">Band: checking…</div>
-    <div id="heard"></div>
-    <div id="said"></div>
-    <button id="voice" class="ghost" style="margin-top:10px;width:100%">🔊 Turn on voice answers</button>
-  </div>
+  <dialog class="care-context" id="careContext" aria-labelledby="contextTitle">
+    <div class="context-heading"><div><span class="eyebrow">YOUR SHARED CARE LOG</span><h2 id="contextTitle">Baby's day</h2></div><button class="icon-button" id="closeContext" aria-label="Close care history"><svg><use href="#i-close"/></svg></button></div>
+    <div class="baby-state" id="babyState"><span class="small-label">FROM THE CARE LOG</span><h3 id="stateText">Waiting for the log</h3><p id="stateDetail">Connect to see recorded activity.</p></div>
+    <div class="care-stats"><div><span>Last feed</span><strong id="fed">—</strong></div><div><span>Sleep in 24 hours</span><strong id="slept">—</strong></div><div><span>Last diaper change</span><strong id="diaper">—</strong></div></div>
+    <details class="insights" id="insights" hidden><summary>Possible context</summary><div><p id="cause"></p><p id="tryFirst"></p><p class="insight-label" id="confidence"></p><ul id="evidence"></ul><p class="uncertainty">An estimate from the log; the cause is unconfirmed.</p></div></details>
+    <div class="timeline-heading"><h3>Recent moments</h3><span id="updatedAt">Not synced yet</span></div><div class="timeline" id="timeline"><p class="empty-context">Your recorded care will appear here.</p></div>
+    <p class="context-footer">A shared story, so the next caretaker can pick up where you left off.</p>
+  </dialog>
 
-  <div class="stats">
-    <div class="stat"><b id="fed">–</b><span>since last feed</span></div>
-    <div class="stat"><b id="slept">–</b><span>sleep, last 24 h</span></div>
-    <div class="stat"><b id="diaper">–</b><span>since diaper</span></div>
-  </div>
-
-  <div class="card">
-    <form id="noteForm"><input id="note" placeholder="Add a note: fed 4 oz, diaper, asleep…" autocomplete="off"><button>Add</button></form>
-    <form id="askForm" style="margin-top:8px"><input id="ask" placeholder="Ask: when did she last eat?" autocomplete="off"><button class="ghost">Ask</button></form>
-    <div id="answer"></div>
-  </div>
-
-  <div class="card" id="timeline"></div>
-</main>
-<script>
-const params = new URLSearchParams(location.search);
-if (params.get('k')) { localStorage.setItem('k', params.get('k')); history.replaceState(null, '', location.pathname); }
-if (params.get('who')) localStorage.setItem('who', params.get('who'));
-const KEY = localStorage.getItem('k') || '', WHO = localStorage.getItem('who') || '';
-const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
-const $ = (id) => document.getElementById(id);
-
-async function api(path, body) {
-  const r = await fetch('/api' + path, { method: body ? 'POST' : 'GET', headers: { 'x-key': KEY, 'content-type': 'application/json' },
-    body: body ? JSON.stringify({ ...body, tz: TZ, who: WHO || undefined }) : undefined });
-  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
-  return r.json();
-}
-const span = (m) => m == null ? '–' : m < 60 ? Math.round(m) + ' min' : Math.floor(m / 60) + ' h ' + (Math.round(m) % 60 ? Math.round(m) % 60 + ' m' : '');
-const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-const LABEL = { feed: 'Fed', diaper: 'Diaper', sleep_start: 'Fell asleep', sleep_end: 'Woke up', cry_start: 'Crying started', cry_end: 'Crying stopped', soothe: 'Soothed', medicine: 'Medicine', note: 'Note' };
-
-// Voice: phones only let a page make sound after a tap, so one tap on the button unlocks this player for good.
-const player = new Audio();
-let voiceOn = false, lastSpoken = null;
-const speechUrl = (extra) => '/api/speech?k=' + encodeURIComponent(KEY) + '&' + extra;
-function speak(url) {
-  player.src = url;
-  return player.play().then(() => { $('voice').textContent = '🔊 Voice answers are on'; })
-    .catch((p) => { $('voice').textContent = '🔇 No sound: ' + p.message + '. Tap to try again'; voiceOn = false; });
-}
-$('voice').onclick = () => {
-  voiceOn = !voiceOn;
-  if (!voiceOn) { player.pause(); $('voice').textContent = '🔊 Turn on voice answers'; return; }
-  $('voice').textContent = '🔊 Starting…';
-  speak(speechUrl('text=' + encodeURIComponent('Voice answers are on.')));     // you should hear this
-};
-
-async function refresh() {
-  try {
-    const [s, t] = await Promise.all([api('/status?tz=' + encodeURIComponent(TZ)), api('/timeline?hours=24')]);
-    $('live').textContent = 'live';
-    const st = $('state');
-    st.className = s.crying ? 'cry' : s.asleep ? 'sleep' : 'calm';
-    st.textContent = s.crying ? 'Crying for ' + span(Math.max(1, s.crying_minutes)) : s.asleep ? 'Asleep for ' + span(s.asleep_minutes) : 'Awake and calm';
-    const r = s.reason || {};
-    $('cause').textContent = r.cause ? (s.crying ? 'Probably ' : 'If she cries: probably ') + r.cause : '';
-    $('try').textContent = r.try_first ? 'Try first: ' + r.try_first : '';
-    $('conf').textContent = r.confidence ? r.confidence + ' confidence' : '';
-    $('evidence').replaceChildren(...(r.evidence || []).map((e) => Object.assign(document.createElement('li'), { textContent: e })));
-    const band = s.band || {};
-    $('bandState').className = 'dot ' + (band.online ? 'on' : 'off');
-    $('bandState').textContent = band.online ? '● ' + (band.name || 'Band') + ' is listening' + (band.cry_score != null ? ' · cry ' + Math.round(band.cry_score * 100) + '%' : '')
-      : '○ Band offline' + (band.seen_seconds_ago != null ? ' (last seen ' + span(band.seen_seconds_ago / 60) + ' ago)' : '');
-    $('heard').className = band.heard_final ? '' : 'live';
-    $('heard').textContent = band.heard && band.heard_seconds_ago < 600 ? '“' + band.heard + '”' + (band.heard_seconds_ago > 5 ? '  · ' + span(band.heard_seconds_ago / 60) + ' ago' : '') : (band.online ? 'Nothing heard yet. Say something near the band.' : '');
-    if (s.speak) {
-      $('said').textContent = '🔊 ' + s.speak.text;
-      if (s.speak.id !== lastSpoken) {
-        const fresh = lastSpoken !== null && s.speak.seconds_ago < 30;     // not the one that was there when the page opened
-        lastSpoken = s.speak.id;
-        if (fresh && voiceOn) speak(speechUrl('id=' + s.speak.id));
-      }
-    } else { $('said').textContent = ''; if (lastSpoken === null) lastSpoken = 0; }
-    $('fed').textContent = span(s.last_feed_minutes_ago);
-    $('slept').textContent = span(s.sleep_minutes_24h);
-    $('diaper').textContent = span(s.last_diaper_minutes_ago);
-    $('timeline').replaceChildren(...t.events.slice().reverse().map((e) => {
-      const row = Object.assign(document.createElement('div'), { className: 'row ' + e.type });
-      const time = Object.assign(document.createElement('time'), { textContent: clock(e.at) });
-      const what = document.createElement('div');
-      what.append(Object.assign(document.createElement('b'), { textContent: LABEL[e.type] || e.type }));
-      const extra = [e.amount != null ? e.amount + (e.unit ? ' ' + e.unit : '') : '', e.detail || ''].filter(Boolean).join(', ');
-      if (extra) what.append(' ' + extra);
-      const by = [e.who, e.source === 'band-voice' ? 'spoken to band' : e.source === 'band-auto' ? 'heard by band' : ''].filter(Boolean).join(' · ');
-      if (by) what.append(Object.assign(document.createElement('div'), { className: 'who', textContent: by }));
-      row.append(time, what);
-      return row;
-    }));
-  } catch (problem) { $('live').textContent = 'offline: ' + problem.message; }
-}
-
-$('noteForm').onsubmit = async (ev) => { ev.preventDefault(); const text = $('note').value.trim(); if (!text) return; $('note').value = ''; await api('/notes', { text, source: 'phone' }).catch((p) => alert(p.message)); refresh(); };
-$('askForm').onsubmit = async (ev) => { ev.preventDefault(); const question = $('ask').value.trim(); if (!question) return; $('answer').textContent = 'Thinking…';
-  try { $('answer').textContent = (await api('/ask', { question })).answer; } catch (p) { $('answer').textContent = 'Could not answer: ' + p.message; } };
-refresh(); setInterval(refresh, 1500);
-</script>
+  <dialog id="settingsDialog" aria-labelledby="settingsTitle"><form id="settingsForm"><div class="dialog-heading"><h2 id="settingsTitle">Your connection</h2><button type="button" class="icon-button" id="closeSettings" aria-label="Close settings"><svg><use href="#i-close"/></svg></button></div><p>Use the shared access key for your baby's care log.</p><label for="accessKey">Access key</label><input id="accessKey" type="password" autocomplete="off" spellcheck="false"><label for="caregiverName">Your name <span>(optional)</span></label><input id="caregiverName" maxlength="80" autocomplete="given-name" placeholder="How should your care notes be signed?"><p class="settings-note">These details are remembered in this browser. Conversations stay in this tab. Voice input may use your browser's speech service.</p><button class="primary-button" type="submit">Save connection</button></form></dialog>
 </body>
 </html>

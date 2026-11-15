@@ -206,6 +206,8 @@ class Cry:
         kind = "cry_start" if crying else "cry_end"
         print("%s  %s" % (time.strftime("%H:%M:%S"), "CRYING started" if crying else "Crying stopped"))
         post("/events", {"type": kind, "source": source})
+        if crying:                                   # the phone now says why she is probably crying: not a caretaker
+            said["mute_until"] = time.time() + 9
 
 
 cry = Cry()

@@ -13,6 +13,36 @@ Three parts:
 Open `https://vexo-baby.marco-44a.workers.dev/?k=KEY&who=YourName` once (ask Marco for KEY).
 The page remembers both, so after that the plain address works.
 
+## Voice conversation interface
+
+The phone page is a responsive Waby speech-to-text UI with a warm neutral canvas,
+large speaker-labeled transcripts, and a glowing orb anchored to the bottom edge.
+Its static files are `worker/public/index.html`, `styles.css`, `app.js`, and
+`assets/waby-orb.png`; Wrangler serves them together. The orb uses the supplied image
+and changes animation for listening, processing, and spoken replies. Reduced-motion
+preferences disable those animations.
+
+- **Ask Waby** sends a question to `/api/ask` and adds the reply to this tab's conversation.
+- **Log care** sends a reviewed care note to `/api/notes`. Questions never use that endpoint.
+- **Tap to speak** starts browser speech recognition when supported. Speech appears live on the
+  transcript canvas and fills the composer; the caretaker reviews it and presses Send.
+  Tap **Finish speaking** to stop input. Microphone access begins only after a click.
+- **Spoken replies** enables browser speech synthesis. It is off by default and can be stopped
+  by unchecking it or starting voice input.
+- The header's **Baby's day** history button opens a drawer with the existing status, recorded
+  feeding/sleep/diaper information, and 24-hour timeline. Close it with its close button or Escape.
+- The settings button changes the shared access key and caretaker name in this browser. Existing
+  `?k=KEY&who=YourName` links still work; both parameters are read before being removed from the URL.
+
+Voice input needs a supported browser, microphone permission, and HTTPS (or localhost). Some
+browser speech services require a network connection. Unsupported or denied speech input leaves
+typing available. Speech recognition here is the browser's service, separate from the band's
+Deepgram pipeline. The redesigned page uses the same Worker API and access key as before.
+
+For local development, with Node.js installed, run `npm ci`, `npm run db:local`, and `npm run dev`
+from `worker/`. Configure local Worker secrets in ignored `.dev.vars` as needed. Deploy the
+Worker normally to publish all three public files. The browser UI does not start the band bridge.
+
 ## Bridge
 
     git clone https://github.com/VexoAI-Org/vexo-open-kit.git      # inside this repo folder
